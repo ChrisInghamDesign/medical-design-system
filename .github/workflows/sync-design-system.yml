@@ -1,6 +1,8 @@
-# Pulls the "Medical (fork)" design system from DS Manager into this repo.
+# Imports the "Medical (fork)" design system from DS Manager into this repo.
 # Run it on demand: Actions > Sync design system > Run workflow.
-# Re-run it after each "Publish" in DS Manager to pick up the latest tokens and components.
+# It updates components/ui and REPLACES design-system/tokens.json with DS Manager's
+# colours, radius and shadows, so changes made in the editor since then are overwritten
+# (fonts and locks are kept). The site redeploys automatically afterwards.
 name: Sync design system
 
 on:
@@ -43,6 +45,9 @@ jobs:
         env:
           CI: "1"
         run: npx -y shadcn@latest init --preset "$PRESET" --force --no-reinstall
+
+      - name: Update tokens.json and theme files
+        run: npm run ds:import
 
       - name: Build check
         run: npm run build
