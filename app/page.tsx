@@ -62,13 +62,15 @@ export default function Home() {
               <CardDescription>Last 6 months of activity</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex h-36 items-end gap-3">
+              <div className="flex h-40 gap-3">
                 {history.map((item) => (
-                  <div key={item.month} className="flex flex-1 flex-col items-center gap-2">
-                    <div
-                      className="bg-primary w-full rounded-sm"
-                      style={{ height: `${item.value}%` }}
-                    />
+                  <div key={item.month} className="flex h-full flex-1 flex-col items-center gap-2">
+                    <div className="flex w-full flex-1 items-end">
+                      <div
+                        className="bg-primary w-full rounded-sm"
+                        style={{ height: `${item.value}%` }}
+                      />
+                    </div>
                     <span className="text-muted-foreground text-xs">{item.month}</span>
                   </div>
                 ))}
@@ -150,7 +152,7 @@ export default function Home() {
                     <span className="text-muted-foreground text-sm">{t.category}</span>
                   </div>
                   <span className="text-muted-foreground hidden text-sm sm:block">{t.date}</span>
-                  <span className={t.amount.startsWith("+") ? "text-primary font-medium" : "font-medium"}>
+                  <span className={t.amount.startsWith("+") ? "font-medium text-green-600 dark:text-green-400" : "font-medium"}>
                     {t.amount}
                   </span>
                 </div>
