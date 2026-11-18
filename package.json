@@ -1,12 +1,14 @@
 {
-  "name": "app-tmp",
+  "name": "medical-design-system",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "ds:build": "tsx scripts/design-system.ts build",
+    "ds:import": "tsx scripts/design-system.ts import"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -36,6 +38,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
     "tailwindcss": "4.3.3",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

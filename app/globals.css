@@ -16,7 +16,7 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
-  --spacing: 0.25rem;
+  --spacing: var(--spacing);
   --shadow-2xs: var(--shadow-2xs, 0 1px #0000000d);
   --shadow-xs: var(--shadow-xs, 0 1px 2px 0 #0000000d);
   --shadow-sm: var(--shadow-sm, 0 1px 3px 0 #0000001a, 0 1px 2px -1px #0000001a);

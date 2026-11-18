@@ -1,33 +1,24 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter, Fraunces } from "next/font/google";
 import "./globals.css";
-import { cn } from "@/lib/utils";
-
-const frauncesHeading = Fraunces({subsets:['latin'],variable:'--font-heading'});
-
-const inter = Inter({subsets:['latin'],variable:'--font-sans'});
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+import "./theme.css";
+import tokens from "@/design-system/tokens.json";
+import { googleFontUrls } from "@/lib/ds/fonts";
 
 export const metadata: Metadata = {
   title: "Medical design system",
-  description: "Component showcase for the Medical design system from DS Manager",
+  description: "Component showcase for the Medical design system",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={cn("h-full", "antialiased", geistSans.variable, geistMono.variable, "font-sans", inter.variable, frauncesHeading.variable)}
-    >
+    <html lang="en" className="h-full antialiased font-sans" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        {googleFontUrls(tokens.fonts).map((href) => (
+          <link key={href} rel="stylesheet" href={href} />
+        ))}
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
