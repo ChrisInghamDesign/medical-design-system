@@ -5,22 +5,31 @@ import * as React from "react"
 import initialTokens from "@/design-system/tokens.json"
 import { ACTIVE_ADAPTER, ADAPTERS } from "@/lib/ds/adapters"
 import { importShadcnCss } from "@/lib/ds/adapters/shadcn"
-import { BASE_PATH, type CanvasToEditor, type EditorToCanvas } from "@/lib/ds/bridge"
+import { BASE_PATH, type CanvasDisplay, type CanvasLayer, type CanvasToEditor, type EditorToCanvas } from "@/lib/ds/bridge"
+import { COMPONENT_CLASSES, SLOT_COMPONENT } from "@/lib/ds/classes"
 import { commitFiles, DEFAULT_REPO, readRepoFile, verifyToken, type RepoConfig } from "@/lib/ds/github"
 import { cloneTokens, getPath, sameTokens, setPath, storage, useTokenHistory } from "@/lib/ds/store"
-import type { DesignTokens, Mode } from "@/lib/ds/types"
+import type { DesignTokens, Mode, OverrideState } from "@/lib/ds/types"
 
 import { CANVASES, FOUNDATIONS } from "./canvas/registry"
 import { ChromeButton, cx, FieldRow, Icons, Modal, Segmented, TextInput, Toast } from "./chrome"
+import { ComponentPanel, STATES, type Selection } from "./component-panel"
 import {
+  BrandPanel,
   ColorsPanel,
+  ControlsPanel,
+  IconsPanel,
+  LintPanel,
   RadiusPanel,
   ShadowsPanel,
   SpacingPanel,
+  StylePanel,
   SystemPanel,
   TypographyPanel,
   type InspectorProps,
+  type PendingAsset,
 } from "./inspector"
+import { LintPage } from "./lint-page"
 
 const TOKENS_PATH = "design-system/tokens.json"
 const canvas = CANVASES[ACTIVE_ADAPTER.id]
@@ -28,27 +37,25 @@ const canvas = CANVASES[ACTIVE_ADAPTER.id]
 type Viewport = "desktop" | "tablet" | "mobile"
 const VIEWPORT_WIDTH: Record<Viewport, string> = { desktop: "100%", tablet: "834px", mobile: "390px" }
 
-const FOUNDATION_ICONS: Record<string, (p: React.SVGProps<SVGSVGElement>) => React.ReactElement> = {
+type IconCmp = (p: React.SVGProps<SVGSVGElement>) => React.ReactElement
+const FOUNDATION_ICONS: Record<string, IconCmp> = {
   colors: Icons.palette,
   typography: Icons.type,
   radius: Icons.radius,
   shadows: Icons.shadow,
   spacing: Icons.spacing,
+  controls: Icons.toggle,
+  icons: Icons.star,
+  brand: Icons.image,
 }
 
-function NavItem({
-  id,
-  label,
-  icon: Icon,
-  active,
-  onSelect,
-}: {
-  id: string
-  label: string
-  icon?: (p: React.SVGProps<SVGSVGElement>) => React.ReactElement
-  active: boolean
-  onSelect: (id: string) => void
-}) {
+/** Lock areas that also cover related token paths */
+const LOCK_ALIASES: Record<string, string[]> = {
+  typeScale: ["fontWeights", "tracking"],
+  radius: ["radiusSteps"],
+}
+
+function NavItem({ id, label, icon: Icon, active, onSelect, badge }: { id: string; label: string; icon?: IconCmp; active: boolean; onSelect: (id: string) => void; badge?: React.ReactNode }) {
   return (
     <button
       type="button"
@@ -60,7 +67,8 @@ function NavItem({
       )}
     >
       {Icon && <Icon width={14} height={14} className="shrink-0 text-zinc-500" />}
-      <span className="truncate">{label}</span>
+      <span className="flex-1 truncate">{label}</span>
+      {badge}
     </button>
   )
 }
@@ -69,7 +77,17 @@ function NavItem({
 function diffTokens(a: DesignTokens, b: DesignTokens, prefix = ""): { path: string; before: string; after: string }[] {
   const out: { path: string; before: string; after: string }[] = []
   const walk = (x: unknown, y: unknown, path: string) => {
-    if (typeof x === "object" && x && typeof y === "object" && y && !Array.isArray(x)) {
+    // One entry per component change, not per field
+    const atomic = /^overrides\.\d+$/.test(path) || path === "locks"
+    if (atomic) {
+      if (JSON.stringify(x) !== JSON.stringify(y))
+        out.push({ path, before: x === undefined ? "–" : JSON.stringify(x), after: y === undefined ? "–" : JSON.stringify(y) })
+      return
+    }
+    // Compare a missing section with an empty one so each new entry is listed
+    if (x === undefined && typeof y === "object" && y) x = Array.isArray(y) ? [] : {}
+    if (y === undefined && typeof x === "object" && x) y = Array.isArray(x) ? [] : {}
+    if (typeof x === "object" && x && typeof y === "object" && y && Array.isArray(x) === Array.isArray(y)) {
       const keys = new Set([...Object.keys(x), ...Object.keys(y)])
       for (const k of keys) walk((x as Record<string, unknown>)[k], (y as Record<string, unknown>)[k], path ? `${path}.${k}` : k)
     } else if (JSON.stringify(x) !== JSON.stringify(y)) {
@@ -82,6 +100,8 @@ function diffTokens(a: DesignTokens, b: DesignTokens, prefix = ""): { path: stri
 
 function viewLabel(view: string) {
   if (view === "overview") return "Overview"
+  if (view === "style") return "Style"
+  if (view === "lint") return "Lint"
   if (view === "components") return "All components"
   if (view.startsWith("foundation:")) return FOUNDATIONS.find((f) => `foundation:${f.id}` === view)?.name ?? "Foundation"
   if (view.startsWith("component:")) return canvas.demos.find((d) => `component:${d.id}` === view)?.name ?? "Component"
@@ -97,19 +117,29 @@ function download(name: string, content: string, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
+/** Views where clicking the canvas can select parts */
+const selectable = (view: string) => view === "overview" || view === "style" || view.startsWith("component:")
+
 export function Editor() {
   const built = initialTokens as DesignTokens
   const history = useTokenHistory(built)
   const { tokens } = history
   const [baseline, setBaseline] = React.useState<DesignTokens>(built)
   const [mode, setMode] = React.useState<Mode>("light")
-  const [view, setView] = React.useState("overview")
+  const [view, setViewRaw] = React.useState("overview")
+  const [display, setDisplay] = React.useState<CanvasDisplay>("demo")
+  const [interact, setInteract] = React.useState(false)
+  const [previewState, setPreviewState] = React.useState<OverrideState | null>(null)
+  const [selection, setSelection] = React.useState<Selection | null>(null)
+  const [layers, setLayers] = React.useState<CanvasLayer[]>([])
+  const [assets, setAssets] = React.useState<Record<string, PendingAsset>>({})
   const [viewport, setViewport] = React.useState<Viewport>("desktop")
+  const [zoom, setZoom] = React.useState(1)
   const [search, setSearch] = React.useState("")
   const [repo] = React.useState<RepoConfig>(DEFAULT_REPO)
   const [token, setToken] = React.useState<string | null>(null)
   const [saveOpen, setSaveOpen] = React.useState(false)
-  const [exportOpen, setExportOpen] = React.useState(false)
+  const [exportOpen, setExportOpen] = React.useState<false | "css" | "import">(false)
   const [restored, setRestored] = React.useState(false)
   const [toast, setToast] = React.useState<{ message: React.ReactNode; tone?: "default" | "error" } | null>(null)
   const [canvasReady, setCanvasReady] = React.useState(false)
@@ -118,10 +148,27 @@ export function Editor() {
   const [canvasSrc] = React.useState(() => `${BASE_PATH}/editor/canvas/?view=overview`)
   const touched = React.useRef(false)
   const draftKey = `ds-editor:draft:${repo.owner}/${repo.repo}`
+  const assetsKey = `${draftKey}:assets`
   const tokenKey = `ds-editor:github-token:${repo.owner}/${repo.repo}`
 
-  const dirty = !sameTokens(tokens, baseline)
-  const changes = React.useMemo(() => (dirty ? diffTokens(baseline, tokens) : []), [baseline, tokens, dirty])
+  const assetList = React.useMemo(() => Object.values(assets), [assets])
+  const dirty = !sameTokens(tokens, baseline) || assetList.length > 0
+  const changes = React.useMemo(() => (sameTokens(tokens, baseline) ? [] : diffTokens(baseline, tokens)), [baseline, tokens])
+  const changeCount = changes.length + assetList.length
+
+  const viewRef = React.useRef(view)
+  React.useEffect(() => {
+    viewRef.current = view
+  }, [view])
+  const setView = React.useCallback((v: string) => {
+    if (v === viewRef.current) return
+    viewRef.current = v
+    setDisplay("demo")
+    setPreviewState(null)
+    setSelection(null)
+    setLayers([])
+    setViewRaw(v)
+  }, [])
 
   /* ---------- load: token, draft, latest tokens from GitHub ---------- */
   /* eslint-disable react-hooks/set-state-in-effect -- browser-only state (URL, localStorage) is read after the static page loads */
@@ -129,13 +176,18 @@ export function Editor() {
     const t = storage.get(tokenKey)
     if (t) setToken(t)
     const hash = decodeURIComponent(window.location.hash.slice(1))
-    if (hash) setView(hash)
+    if (hash) setViewRaw(hash)
 
     const draftRaw = storage.get(draftKey)
     let draft: DesignTokens | null = null
     try {
       draft = draftRaw ? (JSON.parse(draftRaw) as DesignTokens) : null
     } catch {}
+    let draftAssets: Record<string, PendingAsset> = {}
+    try {
+      draftAssets = JSON.parse(storage.get(assetsKey) ?? "{}")
+    } catch {}
+    if (Object.keys(draftAssets).length) setAssets(draftAssets)
     if (draft && !sameTokens(draft, built)) {
       history.replace(draft)
       setRestored(true)
@@ -146,7 +198,7 @@ export function Editor() {
         const remote = JSON.parse(text) as DesignTokens
         setBaseline(remote)
         if (!draft && !touched.current) history.replace(remote)
-        if (draft && sameTokens(draft, remote)) setRestored(false)
+        if (draft && sameTokens(draft, remote) && !Object.keys(draftAssets).length) setRestored(false)
       })
       .catch(() => {
         /* offline or repo not reachable: keep the built-in tokens */
@@ -155,14 +207,23 @@ export function Editor() {
   }, [])
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  // Follow links and back/forward that change the #view
+  React.useEffect(() => {
+    const onHash = () => setView(decodeURIComponent(window.location.hash.slice(1)) || "overview")
+    window.addEventListener("hashchange", onHash)
+    return () => window.removeEventListener("hashchange", onHash)
+  }, [setView])
+
   /* ---------- persist draft ---------- */
   React.useEffect(() => {
     const id = setTimeout(() => {
-      if (dirty) storage.set(draftKey, JSON.stringify(tokens))
+      if (!sameTokens(tokens, baseline)) storage.set(draftKey, JSON.stringify(tokens))
       else storage.remove(draftKey)
+      if (assetList.length) storage.set(assetsKey, JSON.stringify(assets))
+      else storage.remove(assetsKey)
     }, 300)
     return () => clearTimeout(id)
-  }, [tokens, dirty, draftKey])
+  }, [tokens, baseline, assets, assetList.length, draftKey, assetsKey])
 
   /* ---------- canvas bridge ---------- */
   const postToCanvas = React.useCallback((msg: EditorToCanvas) => {
@@ -172,32 +233,81 @@ export function Editor() {
   React.useEffect(() => {
     const onMessage = (e: MessageEvent<CanvasToEditor>) => {
       if (e.origin !== window.location.origin || !e.data || typeof e.data !== "object") return
-      if (e.data.type === "ds:ready") setCanvasReady(true)
-      if (e.data.type === "ds:navigate") setView(e.data.view)
+      const msg = e.data
+      if (msg.type === "ds:ready") setCanvasReady(true)
+      else if (msg.type === "ds:navigate") setView(msg.view)
+      else if (msg.type === "ds:layers") setLayers(msg.layers)
+      else if (msg.type === "ds:selected") setSelection({ slot: msg.slot, variant: msg.variant, size: undefined })
     }
     window.addEventListener("message", onMessage)
     return () => window.removeEventListener("message", onMessage)
-  }, [])
+  }, [setView])
+
+  const assetUrls = React.useMemo(() => Object.fromEntries(Object.entries(assets).map(([p, a]) => [p, a.dataUrl])), [assets])
 
   React.useEffect(() => {
-    if (canvasReady) postToCanvas({ type: "ds:tokens", tokens, mode })
-  }, [tokens, mode, canvasReady, postToCanvas])
+    if (canvasReady) postToCanvas({ type: "ds:tokens", tokens, mode, assets: assetUrls })
+  }, [tokens, mode, assetUrls, canvasReady, postToCanvas])
 
+  const canvasInteract = !selectable(view) || interact
   React.useEffect(() => {
-    if (canvasReady) postToCanvas({ type: "ds:view", view })
+    if (canvasReady) postToCanvas({ type: "ds:view", view, display, state: previewState, interact: canvasInteract })
     const hash = view === "overview" ? "" : `#${view}`
-    if (window.location.hash !== hash) window.history.replaceState(null, "", hash || window.location.pathname)
-  }, [view, canvasReady, postToCanvas])
+    if (window.location.hash !== hash) window.history.pushState(null, "", hash || window.location.pathname + window.location.search)
+  }, [view, display, previewState, canvasInteract, canvasReady, postToCanvas])
+
+  React.useEffect(() => {
+    if (canvasReady) postToCanvas({ type: "ds:select", slot: selection?.slot ?? null, variant: selection?.variant, size: selection?.size })
+  }, [selection, canvasReady, postToCanvas])
+
+  // On a component page, select the component's main part once the canvas reports its layers
+  const componentId = view.startsWith("component:") ? view.slice("component:".length) : null
+  React.useEffect(() => {
+    if (!componentId || selection || !layers.length) return
+    const own = Object.keys(COMPONENT_CLASSES[componentId]?.slots ?? {})
+    const first = own.find((s) => layers.some((l) => l.slot === s))
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- default selection depends on what the canvas reports
+    if (first) setSelection({ slot: first })
+  }, [componentId, layers, selection])
 
   /* ---------- editing ---------- */
-  const isLocked = React.useCallback((path: string) => (tokens.locks ?? []).includes(path), [tokens.locks])
+  const locks = tokens.locks
+  const isLocked = React.useCallback(
+    (path: string) =>
+      (locks ?? []).some((l) => {
+        const roots = [l, ...(LOCK_ALIASES[l] ?? [])]
+        return roots.some((r) => path === r || path.startsWith(`${r}.`))
+      }),
+    [locks]
+  )
 
   const update = React.useCallback(
     (path: string, value: unknown, key?: string) => {
       if (isLocked(path)) return
       if (JSON.stringify(getPath(tokens, path)) === JSON.stringify(value)) return
       touched.current = true
-      history.set(setPath(tokens, path, value), key)
+      let next: DesignTokens
+      if (value === undefined) {
+        next = cloneTokens(tokens)
+        const keys = path.split(".")
+        let o = next as unknown as Record<string, unknown>
+        for (const k of keys.slice(0, -1)) {
+          if (o[k] == null) o[k] = {}
+          o = o[k] as Record<string, unknown>
+        }
+        delete o[keys[keys.length - 1]]
+      } else {
+        // Create missing parents (older tokens.json files lack the newer sections)
+        next = cloneTokens(tokens)
+        const keys = path.split(".")
+        let o = next as unknown as Record<string, unknown>
+        for (const k of keys.slice(0, -1)) {
+          if (o[k] == null || typeof o[k] !== "object") o[k] = {}
+          o = o[k] as Record<string, unknown>
+        }
+        o[keys[keys.length - 1]] = value
+      }
+      history.set(next, key)
     },
     [tokens, history, isLocked]
   )
@@ -214,22 +324,27 @@ export function Editor() {
 
   const toggleLock = React.useCallback(
     (path: string) => {
-      const locks = new Set(tokens.locks ?? [])
-      if (locks.has(path)) locks.delete(path)
-      else locks.add(path)
+      const set = new Set(tokens.locks ?? [])
+      if (set.has(path)) set.delete(path)
+      else if (isLocked(path)) return // locked by a whole-area lock
+      else set.add(path)
       touched.current = true
-      history.set({ ...cloneTokens(tokens), locks: Array.from(locks).sort() })
+      history.set({ ...cloneTokens(tokens), locks: Array.from(set).sort() })
     },
-    [tokens, history]
+    [tokens, history, isLocked]
   )
 
   /* ---------- keyboard ---------- */
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT" || target.isContentEditable)
+      if (e.key === "Escape" && !typing) {
+        setSelection(null)
+        return
+      }
       const mod = e.metaKey || e.ctrlKey
       if (!mod) return
-      const target = e.target as HTMLElement | null
-      const typing = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
       const k = e.key.toLowerCase()
       if (k === "s") {
         e.preventDefault()
@@ -256,31 +371,157 @@ export function Editor() {
 
   /* ---------- inspector ---------- */
   const inspectorProps: InspectorProps = { tokens, mode, setMode, update, updateMany, isLocked, toggleLock }
+  const demo = componentId ? canvas.demos.find((d) => d.id === componentId) : undefined
+  // A part picked on the overview/style canvas opens that component's panel
+  const pickedComponent = !componentId && selection && selectable(view) ? SLOT_COMPONENT[selection.slot] : undefined
+  const panelComponent = componentId ?? pickedComponent
+  const panelName = (panelComponent && canvas.demos.find((d) => d.id === panelComponent)?.name) || panelComponent || ""
+
   let inspector: React.ReactNode
-  if (view === "foundation:colors") inspector = <ColorsPanel {...inspectorProps} />
-  else if (view === "foundation:typography") inspector = <TypographyPanel {...inspectorProps} />
-  else if (view === "foundation:radius") inspector = <RadiusPanel {...inspectorProps} />
-  else if (view === "foundation:shadows") inspector = <ShadowsPanel {...inspectorProps} />
-  else if (view === "foundation:spacing") inspector = <SpacingPanel {...inspectorProps} />
-  else inspector = <SystemPanel {...inspectorProps} onNavigate={setView} />
+  let inspectorTitle = "Design system"
+  if (panelComponent) {
+    inspectorTitle = "Component"
+    inspector = (
+      <ComponentPanel
+        key={panelComponent}
+        componentId={panelComponent}
+        componentName={panelName}
+        layers={layers}
+        selection={selection}
+        onSelect={setSelection}
+        state={previewState}
+        setState={setPreviewState}
+        tokens={tokens}
+        update={update}
+        locked={isLocked("overrides")}
+      />
+    )
+  } else if (view.startsWith("foundation:")) {
+    inspectorTitle = viewLabel(view)
+    const id = view.slice("foundation:".length)
+    if (id === "colors") inspector = <ColorsPanel {...inspectorProps} />
+    else if (id === "typography") inspector = <TypographyPanel {...inspectorProps} />
+    else if (id === "radius") inspector = <RadiusPanel {...inspectorProps} />
+    else if (id === "shadows") inspector = <ShadowsPanel {...inspectorProps} />
+    else if (id === "spacing") inspector = <SpacingPanel {...inspectorProps} />
+    else if (id === "controls") inspector = <ControlsPanel {...inspectorProps} />
+    else if (id === "icons") inspector = <IconsPanel {...inspectorProps} />
+    else if (id === "brand")
+      inspector = (
+        <BrandPanel
+          {...inspectorProps}
+          onAsset={(path, asset) => setAssets((a) => ({ ...a, [path]: asset }))}
+          onError={(message) => setToast({ message, tone: "error" })}
+        />
+      )
+  } else if (view === "style") {
+    inspectorTitle = "Style"
+    inspector = <StylePanel {...inspectorProps} onImport={() => setExportOpen("import")} />
+  } else if (view === "lint") {
+    inspectorTitle = "Lint rules"
+    inspector = <LintPanel {...inspectorProps} />
+  } else {
+    inspector = <SystemPanel {...inspectorProps} onNavigate={setView} />
+  }
 
   const q = search.trim().toLowerCase()
   const demos = canvas.demos.filter((d) => !q || d.name.toLowerCase().includes(q))
   const foundations = FOUNDATIONS.filter((f) => !q || f.name.toLowerCase().includes(q))
+  const overrideCount = (slotOrComponent: string) => (tokens.overrides ?? []).filter((o) => o.component === slotOrComponent).length
 
+  /* ---------- canvas toolbar ---------- */
+  const toolbar: React.ReactNode[] = []
+  if (view.startsWith("foundation:")) {
+    toolbar.push(
+      <Segmented
+        key="docs"
+        value={display === "preview" ? "preview" : "demo"}
+        onChange={(v) => setDisplay(v as CanvasDisplay)}
+        options={[
+          { value: "demo", label: "Docs", title: "Documentation for this foundation" },
+          { value: "preview", label: "Preview", title: "See it on the overview screen" },
+        ]}
+      />
+    )
+  }
+  if (demo?.matrix) {
+    toolbar.push(
+      <Segmented
+        key="matrix"
+        value={display === "matrix" ? "matrix" : "demo"}
+        onChange={(v) => setDisplay(v as CanvasDisplay)}
+        options={[
+          { value: "demo", label: "Demo" },
+          { value: "matrix", label: "Matrix", title: "Every variant and size" },
+        ]}
+      />
+    )
+  }
+  if (selectable(view)) {
+    toolbar.push(
+      <Segmented
+        key="interact"
+        value={interact ? "interact" : "select"}
+        onChange={(v) => setInteract(v === "interact")}
+        options={[
+          { value: "select", label: <><Icons.cursor width={13} height={13} /> Select</>, title: "Click a part to edit it" },
+          { value: "interact", label: <><Icons.hand width={13} height={13} /> Interact</>, title: "Use the components normally" },
+        ]}
+      />
+    )
+    toolbar.push(
+      <select
+        key="state"
+        value={previewState ?? "none"}
+        onChange={(e) => setPreviewState(e.target.value === "none" ? null : (e.target.value as OverrideState))}
+        aria-label="Preview state"
+        title="Show components in this state"
+        className="h-8 rounded-[6px] border border-zinc-200 bg-white px-2 text-[12px] text-zinc-800 outline-none"
+      >
+        {STATES.map((s) => (
+          <option key={s.value} value={s.value}>
+            State: {s.label}
+          </option>
+        ))}
+      </select>
+    )
+  }
+
+  if (view !== "lint") {
+    toolbar.push(
+      <select
+        key="zoom"
+        value={zoom}
+        onChange={(e) => setZoom(Number(e.target.value))}
+        aria-label="Zoom"
+        title="Zoom"
+        className="h-8 rounded-[6px] border border-zinc-200 bg-white px-2 text-[12px] text-zinc-800 outline-none"
+      >
+        {[0.5, 0.75, 1, 1.25, 1.5].map((z) => (
+          <option key={z} value={z}>
+            {Math.round(z * 100)}%
+          </option>
+        ))}
+      </select>
+    )
+  }
+
+  // "Accordion  3 parts, 1 yours"
+  let viewMeta: string | null = null
+  if (panelComponent) {
+    const parts = Object.keys(COMPONENT_CLASSES[panelComponent]?.slots ?? {})
+    const mine = (tokens.overrides ?? []).filter((o) => o.component === panelComponent || parts.includes(o.slot)).length
+    viewMeta = `${parts.length} part${parts.length === 1 ? "" : "s"}, ${mine} yours`
+  }
 
   return (
-    <div
-      className="flex h-dvh flex-col bg-zinc-50 text-zinc-900"
-      style={{ fontFamily: "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" }}
-    >
+    <div className="flex h-dvh flex-col bg-zinc-50 text-zinc-900" style={{ fontFamily: "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
       {/* Top bar */}
       <header className="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-200 bg-white px-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="flex size-7 items-center justify-center rounded-[6px] bg-zinc-900 text-[11px] font-bold text-white">DS</span>
           <span className="truncate text-[13px] font-semibold">{tokens.name}</span>
           <span className="hidden rounded-[4px] bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-500 sm:inline">{ACTIVE_ADAPTER.name}</span>
-          <span className="hidden text-[13px] text-zinc-400 md:inline">/ {viewLabel(view)}</span>
         </div>
         <div className="ml-auto flex items-center gap-2">
           <Segmented
@@ -308,15 +549,25 @@ export function Editor() {
           <ChromeButton variant="ghost" size="icon" title="Redo (⇧⌘Z)" aria-label="Redo" disabled={!history.canRedo} onClick={history.redo}>
             <Icons.redo />
           </ChromeButton>
-          <ChromeButton variant="ghost" size="icon" title="Discard unsaved changes" aria-label="Discard unsaved changes" disabled={!dirty} onClick={() => history.set(cloneTokens(baseline))}>
+          <ChromeButton
+            variant="ghost"
+            size="icon"
+            title="Discard unsaved changes"
+            aria-label="Discard unsaved changes"
+            disabled={!dirty}
+            onClick={() => {
+              history.set(cloneTokens(baseline))
+              setAssets({})
+            }}
+          >
             <Icons.reset />
           </ChromeButton>
-          <ChromeButton onClick={() => setExportOpen(true)}>
+          <ChromeButton onClick={() => setExportOpen("css")}>
             <Icons.download /> <span className="hidden sm:inline">Export</span>
           </ChromeButton>
           <ChromeButton variant="primary" onClick={() => setSaveOpen(true)} title="Save to GitHub (⌘S)">
             <Icons.github /> Save
-            {dirty && <span className="ml-0.5 rounded-full bg-white/20 px-1.5 text-[11px]">{changes.length}</span>}
+            {dirty && <span className="ml-0.5 rounded-full bg-white/20 px-1.5 text-[11px]">{changeCount}</span>}
           </ChromeButton>
         </div>
       </header>
@@ -324,7 +575,15 @@ export function Editor() {
       {restored && dirty && (
         <div className="flex items-center justify-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-[12px] text-amber-900">
           Restored your unsaved changes from last time.
-          <button type="button" className="font-medium underline" onClick={() => { history.replace(cloneTokens(baseline)); setRestored(false) }}>
+          <button
+            type="button"
+            className="font-medium underline"
+            onClick={() => {
+              history.replace(cloneTokens(baseline))
+              setAssets({})
+              setRestored(false)
+            }}
+          >
             Discard them
           </button>
           <button type="button" className="font-medium underline" onClick={() => setRestored(false)}>
@@ -336,47 +595,112 @@ export function Editor() {
       <div className="flex min-h-0 flex-1">
         {/* Sidebar */}
         <nav className="flex w-56 shrink-0 flex-col border-r border-zinc-200 bg-white" aria-label="Design system">
-          <div className="p-2">
-            <div className="relative">
-              <Icons.search width={14} height={14} className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-zinc-400" />
-              <TextInput placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} className="h-7 pl-7" aria-label="Search" />
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto px-2 pb-4">
-            {!q && (
-              <div className="flex flex-col gap-0.5">
-                <NavItem id={"overview"} active={view === "overview"} onSelect={setView} label="Overview" icon={Icons.home} />
-                <NavItem id={"components"} active={view === "components"} onSelect={setView} label="All components" icon={Icons.grid} />
+          {componentId ? (
+            <>
+              <div className="flex flex-col gap-1 border-b border-zinc-200 p-2">
+                <button
+                  type="button"
+                  onClick={() => setView("components")}
+                  className="flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-[12px] text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+                >
+                  <Icons.back width={13} height={13} /> All components
+                </button>
+                <div className="flex items-center gap-2 px-2 pt-1 text-[13px] font-semibold">
+                  <Icons.component width={14} height={14} className="text-zinc-500" /> {demo?.name ?? componentId}
+                </div>
               </div>
-            )}
-            {foundations.length > 0 && (
-              <>
-                <div className="mt-4 mb-1 px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Foundations</div>
-                <div className="flex flex-col gap-0.5">
-                  {foundations.map((f) => (
-                    <NavItem key={f.id} id={`foundation:${f.id}`} active={view === `foundation:${f.id}`} onSelect={setView} label={f.name} icon={FOUNDATION_ICONS[f.id]} />
-                  ))}
+              <div className="flex-1 overflow-y-auto p-2">
+                <div className="mb-1 flex items-center gap-1.5 px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">
+                  <Icons.layers width={12} height={12} /> Layers
                 </div>
-              </>
-            )}
-            {demos.length > 0 && (
-              <>
-                <div className="mt-4 mb-1 px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Components</div>
-                <div className="flex flex-col gap-0.5">
-                  {demos.map((d) => (
-                    <NavItem key={d.id} id={`component:${d.id}`} active={view === `component:${d.id}`} onSelect={setView} label={d.name} icon={Icons.component} />
-                  ))}
+                {layers.length === 0 ? (
+                  <p className="px-2 text-[12px] text-zinc-400">Loading…</p>
+                ) : (
+                  <div className="flex flex-col gap-0.5">
+                    {[...layers]
+                      .sort((a, b) => {
+                        const own = Object.keys(COMPONENT_CLASSES[componentId]?.slots ?? {})
+                        const ao = own.includes(a.slot) ? 0 : 1
+                        const bo = own.includes(b.slot) ? 0 : 1
+                        return ao - bo || a.depth - b.depth || a.slot.localeCompare(b.slot)
+                      })
+                      .map((l) => {
+                        const own = Object.keys(COMPONENT_CLASSES[componentId]?.slots ?? {}).includes(l.slot)
+                        const active = selection?.slot === l.slot
+                        return (
+                          <button
+                            key={l.slot}
+                            type="button"
+                            onClick={() => setSelection({ slot: l.slot })}
+                            aria-pressed={active}
+                            className={cx(
+                              "flex h-7 w-full items-center gap-1.5 rounded-[6px] pr-2 text-left text-[12px] transition-colors",
+                              active ? "bg-blue-50 font-medium text-blue-800" : own ? "text-zinc-700 hover:bg-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                            )}
+                            style={{ paddingLeft: 8 + Math.min(l.depth, 4) * 10 }}
+                          >
+                            <span className="flex-1 truncate font-mono">{l.slot}</span>
+                            <span className="text-[10px] text-zinc-400">{l.count}</span>
+                          </button>
+                        )
+                      })}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="p-2">
+                <div className="relative">
+                  <Icons.search width={14} height={14} className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-zinc-400" />
+                  <TextInput placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} className="h-7 pl-7" aria-label="Search" />
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+              <div className="flex-1 overflow-y-auto px-2 pb-4">
+                {!q && (
+                  <div className="flex flex-col gap-0.5">
+                    <NavItem id="overview" active={view === "overview"} onSelect={setView} label="Overview" icon={Icons.home} />
+                    <NavItem id="style" active={view === "style"} onSelect={setView} label="Style" icon={Icons.brush} />
+                    <NavItem id="components" active={view === "components"} onSelect={setView} label="All components" icon={Icons.grid} />
+                    <NavItem id="lint" active={view === "lint"} onSelect={setView} label="Lint" icon={Icons.shield} />
+                  </div>
+                )}
+                {foundations.length > 0 && (
+                  <>
+                    <div className="mt-4 mb-1 px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Foundations</div>
+                    <div className="flex flex-col gap-0.5">
+                      {foundations.map((f) => (
+                        <NavItem key={f.id} id={`foundation:${f.id}`} active={view === `foundation:${f.id}`} onSelect={setView} label={f.name} icon={FOUNDATION_ICONS[f.id]} />
+                      ))}
+                    </div>
+                  </>
+                )}
+                {demos.length > 0 && (
+                  <>
+                    <div className="mt-4 mb-1 px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Components</div>
+                    <div className="flex flex-col gap-0.5">
+                      {demos.map((d) => {
+                        const n = overrideCount(d.id)
+                        return (
+                          <NavItem
+                            key={d.id}
+                            id={`component:${d.id}`}
+                            active={false}
+                            onSelect={setView}
+                            label={d.name}
+                            icon={Icons.component}
+                            badge={n > 0 ? <span className="size-1.5 rounded-full bg-blue-500" title={`${n} change${n === 1 ? "" : "s"}`} /> : undefined}
+                          />
+                        )
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
           <div className="border-t border-zinc-200 p-2">
-            <a
-              href={`${BASE_PATH}/`}
-              target="_blank"
-              rel="noopener"
-              className="flex h-7 items-center gap-2 rounded-[6px] px-2 text-[12px] text-zinc-600 hover:bg-zinc-100"
-            >
+            <a href={`${BASE_PATH}/`} target="_blank" rel="noopener" className="flex h-7 items-center gap-2 rounded-[6px] px-2 text-[12px] text-zinc-600 hover:bg-zinc-100">
               <Icons.external width={13} height={13} /> View the app
             </a>
             <a
@@ -391,24 +715,42 @@ export function Editor() {
         </nav>
 
         {/* Canvas */}
-        <main className="flex min-w-0 flex-1 justify-center overflow-auto bg-zinc-100 p-4">
-          <div
-            className="h-full overflow-hidden rounded-[10px] border border-zinc-200 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06)] transition-[width] duration-200"
-            style={{ width: VIEWPORT_WIDTH[viewport], maxWidth: "100%" }}
-          >
-            <iframe
-              ref={iframeRef}
-              title="Design system canvas"
-              src={canvasSrc}
-              className="size-full border-0"
-            />
+        <main className="flex min-w-0 flex-1 flex-col bg-zinc-100">
+          <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-200 bg-white/70 px-3">
+            <span className="truncate text-[13px] font-medium text-zinc-800">{pickedComponent ? panelName : viewLabel(view)}</span>
+            {viewMeta && <span className="truncate text-[12px] text-zinc-500">{viewMeta}</span>}
+            <div className="ml-auto flex items-center gap-2">{toolbar}</div>
           </div>
+          <div className={cx("min-h-0 flex-1 justify-center overflow-auto p-4", view === "lint" ? "hidden" : "flex")}>
+            <div
+              className="h-full overflow-hidden rounded-[10px] border border-zinc-200 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06)] transition-[width] duration-200"
+              style={{ width: VIEWPORT_WIDTH[viewport], maxWidth: "100%" }}
+            >
+              <iframe
+                ref={iframeRef}
+                title="Design system canvas"
+                src={canvasSrc}
+                className="border-0"
+                style={{ width: `${100 / zoom}%`, height: `${100 / zoom}%`, transform: `scale(${zoom})`, transformOrigin: "0 0" }}
+              />
+            </div>
+          </div>
+          {view === "lint" && (
+            <div className="min-h-0 flex-1 overflow-auto">
+              <LintPage tokens={tokens} repo={repo} token={token} isLocked={isLocked} toggleLock={toggleLock} />
+            </div>
+          )}
         </main>
 
         {/* Inspector */}
         <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-zinc-200 bg-white" aria-label="Inspector">
-          <div className="flex h-10 shrink-0 items-center border-b border-zinc-200 px-4 text-[12px] font-semibold text-zinc-900">
-            {view.startsWith("foundation:") ? viewLabel(view) : "Design system"}
+          <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-200 px-4 text-[12px] font-semibold text-zinc-900">
+            {inspectorTitle}
+            {pickedComponent && (
+              <button type="button" className="text-[11px] font-normal text-zinc-500 underline" onClick={() => setSelection(null)}>
+                Done
+              </button>
+            )}
           </div>
           {inspector}
         </aside>
@@ -419,6 +761,7 @@ export function Editor() {
         onClose={() => setSaveOpen(false)}
         tokens={tokens}
         changes={changes}
+        assets={assetList}
         repo={repo}
         token={token}
         onToken={(t) => {
@@ -428,7 +771,9 @@ export function Editor() {
         }}
         onSaved={(url) => {
           setBaseline(cloneTokens(tokens))
+          setAssets({})
           storage.remove(draftKey)
+          storage.remove(assetsKey)
           setRestored(false)
           setSaveOpen(false)
           setToast({
@@ -445,7 +790,8 @@ export function Editor() {
       />
 
       <ExportDialog
-        open={exportOpen}
+        open={exportOpen !== false}
+        initialTab={exportOpen || "css"}
         onClose={() => setExportOpen(false)}
         tokens={tokens}
         onImport={(next, count) => {
@@ -481,6 +827,7 @@ function SaveDialog({
   onClose,
   tokens,
   changes,
+  assets,
   repo,
   token,
   onToken,
@@ -490,6 +837,7 @@ function SaveDialog({
   onClose: () => void
   tokens: DesignTokens
   changes: { path: string; before: string; after: string }[]
+  assets: PendingAsset[]
   repo: RepoConfig
   token: string | null
   onToken: (t: string | null) => void
@@ -505,16 +853,17 @@ function SaveDialog({
     if (!open) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the form each time the dialog opens
     setError(null)
-    const n = changes.length
+    const n = changes.length + assets.length
     setMessage(n ? `Update design system tokens (${n} change${n === 1 ? "" : "s"})` : "Update design system tokens")
-  }, [open, changes.length])
+  }, [open, changes.length, assets.length])
 
   const files = React.useMemo(
     () => [
       { path: TOKENS_PATH, content: JSON.stringify(tokens, null, 2) + "\n" },
       ...ADAPTERS.flatMap((a) => a.outputs.map((o) => ({ path: o.path, content: o.generate(tokens) }))),
+      ...assets.map((a) => ({ path: a.repoPath, content: a.content })),
     ],
-    [tokens]
+    [tokens, assets]
   )
 
   const connect = async () => {
@@ -556,8 +905,8 @@ function SaveDialog({
         token ? (
           <>
             <ChromeButton onClick={onClose}>Cancel</ChromeButton>
-            <ChromeButton variant="primary" onClick={save} disabled={busy || changes.length === 0}>
-              {busy ? "Saving…" : changes.length === 0 ? "Nothing to save" : "Commit to main"}
+            <ChromeButton variant="primary" onClick={save} disabled={busy || changes.length + assets.length === 0}>
+              {busy ? "Saving…" : changes.length + assets.length === 0 ? "Nothing to save" : "Commit to main"}
             </ChromeButton>
           </>
         ) : (
@@ -627,8 +976,13 @@ function SaveDialog({
             <span className="text-[12px] text-zinc-600">
               Changes {changes.length > 0 && `(${changes.length})`}
             </span>
+            {assets.length > 0 && (
+              <p className="text-[12px] text-zinc-600">
+                Uploaded files: {assets.map((a) => a.repoPath).join(", ")}
+              </p>
+            )}
             {changes.length === 0 ? (
-              <p className="text-[12px] text-zinc-500">No changes since the last save.</p>
+              <p className="text-[12px] text-zinc-500">{assets.length ? "No token changes." : "No changes since the last save."}</p>
             ) : (
               <div className="max-h-56 overflow-y-auto rounded-[6px] border border-zinc-200">
                 <table className="w-full text-left text-[11px]">
@@ -658,16 +1012,22 @@ function SaveDialog({
 
 function ExportDialog({
   open,
+  initialTab,
   onClose,
   tokens,
   onImport,
 }: {
   open: boolean
+  initialTab: "css" | "import"
   onClose: () => void
   tokens: DesignTokens
   onImport: (next: DesignTokens, count: number) => void
 }) {
-  const [tab, setTab] = React.useState<string>("css")
+  const [tab, setTab] = React.useState<string>(initialTab)
+  React.useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- open on the tab that was asked for
+    if (open) setTab(initialTab)
+  }, [open, initialTab])
   const [paste, setPaste] = React.useState("")
   const [copied, setCopied] = React.useState(false)
   const outputs = ADAPTERS.flatMap((a) => a.outputs.map((o) => ({ id: o.path, label: o.path.split("/").pop()!, content: o.generate(tokens) })))

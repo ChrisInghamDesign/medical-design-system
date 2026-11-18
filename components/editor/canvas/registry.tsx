@@ -3,9 +3,18 @@
 import * as React from "react"
 
 import { MedicalOverview } from "@/components/showcase/medical-overview"
-import type { DesignTokens, Mode } from "@/lib/ds/types"
 
-import { ColorsView, RadiusView, ShadowsView, SpacingView, TypographyView } from "./foundations"
+import {
+  BrandView,
+  ColorsView,
+  ControlsView,
+  IconsView,
+  RadiusView,
+  ShadowsView,
+  SpacingView,
+  TypographyView,
+  type FoundationProps,
+} from "./foundations"
 import { DEMOS, type Demo } from "./shadcn/demos"
 
 /**
@@ -27,27 +36,36 @@ export const CANVASES: Record<string, LibraryCanvas> = {
 }
 
 export const FOUNDATIONS = [
-  { id: "colors", name: "Colors" },
-  { id: "typography", name: "Typography" },
-  { id: "radius", name: "Radius" },
-  { id: "shadows", name: "Shadows" },
-  { id: "spacing", name: "Spacing" },
+  { id: "colors", name: "Colors", summary: "Light and dark palettes, contrast checks and custom colours" },
+  { id: "typography", name: "Typography", summary: "Fonts, type scale, weights and letter spacing" },
+  { id: "radius", name: "Radius", summary: "Base radius and the scale calculated from it" },
+  { id: "shadows", name: "Shadows", summary: "The elevation ramp" },
+  { id: "spacing", name: "Spacing", summary: "Base unit and density" },
+  { id: "controls", name: "Controls", summary: "Control heights and focus style" },
+  { id: "icons", name: "Icons", summary: "Icon library, stroke and roles" },
+  { id: "brand", name: "Brand", summary: "Logo, mark and favicon" },
 ] as const
 
 export type FoundationId = (typeof FOUNDATIONS)[number]["id"]
 
-export function renderFoundation(id: string, tokens: DesignTokens, mode: Mode) {
+export function renderFoundation(id: string, props: FoundationProps) {
   switch (id) {
     case "colors":
-      return <ColorsView tokens={tokens} mode={mode} />
+      return <ColorsView {...props} />
     case "typography":
-      return <TypographyView tokens={tokens} />
+      return <TypographyView {...props} />
     case "radius":
-      return <RadiusView tokens={tokens} />
+      return <RadiusView {...props} />
     case "shadows":
-      return <ShadowsView tokens={tokens} mode={mode} />
+      return <ShadowsView {...props} />
     case "spacing":
-      return <SpacingView tokens={tokens} />
+      return <SpacingView {...props} />
+    case "controls":
+      return <ControlsView {...props} />
+    case "icons":
+      return <IconsView {...props} />
+    case "brand":
+      return <BrandView {...props} />
     default:
       return null
   }

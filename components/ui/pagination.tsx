@@ -60,6 +60,7 @@ function PaginationLink({
         <a
           aria-current={isActive ? "page" : undefined}
           data-slot="pagination-link"
+          data-size={size ?? "default"}
           data-active={isActive}
           {...props}
         />

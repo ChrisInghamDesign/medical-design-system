@@ -13,4 +13,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 - The design system's source of truth is `design-system/tokens.json` (library-neutral tokens). Don't hand-edit `app/theme.css`; it's generated from tokens.json by `npm run ds:build` or by the editor at `/editor`.
 - Values listed under `locks` in `design-system/tokens.json` are locked. Never change a locked value (e.g. `colors.light.primary`, `radius`), in tokens.json or by overriding it in components or CSS.
 - Use the theme's tokens (Tailwind classes like `bg-primary`, `text-muted-foreground`, `rounded-lg`, `shadow-sm`) rather than hard-coded colours, radii or shadows.
-- `components/ui/` is replaced whenever the DS Manager sync runs. Put custom components elsewhere.
+- `components/ui/` is replaced whenever the DS Manager sync runs. Put custom components elsewhere. Don't restyle components with className; change them in the editor (saved as `overrides` in tokens.json).
+- Lock areas: a lock on `typeScale` also covers `fontWeights` and `tracking`; `radius` covers `radiusSteps`; `overrides` covers all component style changes.
+- Use `<Logo />` and `<Mark />` from `components/brand.tsx` (generated) for the brand; use custom colours from tokens.json (e.g. `bg-success`) by name.
+- Follow the lint rules in tokens.json `lint.rules` (`npm run lint`): no raw colours (hex, `bg-blue-500`), no arbitrary sizes (`p-[13px]`), no inline styles, no class names built with `${…}`.

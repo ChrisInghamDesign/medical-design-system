@@ -1,10 +1,26 @@
-import type { DesignTokens, Mode } from "./types"
+import type { DesignTokens, Mode, OverrideState } from "./types"
 
-/** Messages between the editor and the canvas iframe */
+export type CanvasDisplay = "demo" | "matrix" | "preview"
+
+/** Messages from the editor to the canvas iframe */
 export type EditorToCanvas =
-  | { type: "ds:tokens"; tokens: DesignTokens; mode: Mode }
-  | { type: "ds:view"; view: string }
+  | { type: "ds:tokens"; tokens: DesignTokens; mode: Mode; assets: Record<string, string> }
+  | { type: "ds:view"; view: string; display: CanvasDisplay; state: OverrideState | null; interact: boolean }
+  | { type: "ds:select"; slot: string | null; variant?: string; size?: string }
 
-export type CanvasToEditor = { type: "ds:ready" } | { type: "ds:navigate"; view: string }
+export interface CanvasLayer {
+  slot: string
+  depth: number
+  count: number
+  variants: string[]
+  sizes: string[]
+}
+
+/** Messages from the canvas back to the editor */
+export type CanvasToEditor =
+  | { type: "ds:ready" }
+  | { type: "ds:navigate"; view: string }
+  | { type: "ds:layers"; layers: CanvasLayer[] }
+  | { type: "ds:selected"; slot: string; variant?: string; size?: string }
 
 export const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? ""

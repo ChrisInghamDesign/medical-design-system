@@ -129,6 +129,17 @@ export const Icons = {
   external: svg(<path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />),
   reset: svg(<path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5" />),
   upload: svg(<path d="M12 21V9m0 0-4 4m4-4 4 4M4 3h16" />),
+  layers: svg(<path d="m12 3 9 5-9 5-9-5 9-5ZM3 13l9 5 9-5" />),
+  cursor: svg(<path d="m4 4 7 17 2.5-7.5L21 11 4 4Z" />),
+  hand: svg(<path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8l-1.5-1.5a2 2 0 0 0-3 2.6L6 20a6 6 0 0 0 5 2h2a6 6 0 0 0 6-6v-5a2 2 0 0 0-4 0" />),
+  shield: svg(<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10ZM9 12l2 2 4-4" />),
+  brush: svg(<path d="m14.6 9.4 5.7-5.7a1.4 1.4 0 0 1 2 2l-5.7 5.7M7 14c-2 0-3 1.5-3 3 0 1.2-.8 2.4-2 3 4 1 9 0 9-4a3 3 0 0 0-1-2.2M10 13l3 3 3.6-4.6-2-2L10 13Z" />),
+  image: svg(<><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-5-5L5 21" /></>),
+  toggle: svg(<><rect x="2" y="6" width="20" height="12" rx="6" /><circle cx="16" cy="12" r="3" /></>),
+  star: svg(<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9L12 3Z" />),
+  back: svg(<path d="m15 18-6-6 6-6" />),
+  trash: svg(<path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4h6v3" />),
+  play: svg(<path d="M7 4v16l13-8L7 4Z" />),
 }
 
 export function ChromeButton({
@@ -244,13 +255,15 @@ export function PanelSection({
   )
 }
 
-export function FieldRow({ label, children, hint }: { label: React.ReactNode; children: React.ReactNode; hint?: React.ReactNode }) {
+export function FieldRow({ label, children, hint, group }: { label: React.ReactNode; children: React.ReactNode; hint?: React.ReactNode; group?: boolean }) {
+  // Rows holding several buttons (segmented controls) must not be <label>s
+  const Tag = group ? "div" : "label"
   return (
-    <label className="flex flex-col gap-1.5">
+    <Tag className="flex flex-col gap-1.5">
       <span className="text-[12px] text-zinc-600">{label}</span>
       {children}
       {hint && <span className="text-[11px] text-zinc-500">{hint}</span>}
-    </label>
+    </Tag>
   )
 }
 

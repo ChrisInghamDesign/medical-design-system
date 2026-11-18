@@ -1,4 +1,4 @@
-import type { DesignTokens, Mode } from "../types"
+import type { DesignTokens } from "../types"
 
 /**
  * An adapter turns library-neutral tokens into one component library's theme.
@@ -17,6 +17,6 @@ export interface LibraryAdapter {
   description: string
   /** Files written to the repo when the design system is saved */
   outputs: { path: string; generate: (tokens: DesignTokens) => string }[]
-  /** CSS variables applied live in the canvas while editing (optional) */
-  previewVars?: (tokens: DesignTokens, mode: Mode) => Record<string, string>
+  /** CSS injected into the canvas while editing, for a live preview (optional) */
+  previewCss?: (tokens: DesignTokens) => string
 }

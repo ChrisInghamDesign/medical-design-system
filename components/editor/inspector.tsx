@@ -3,27 +3,27 @@
 import * as React from "react"
 
 import { ADAPTERS } from "@/lib/ds/adapters"
-import {
-  contrastLevel,
-  contrastRatio,
-  formatOklch,
-  getAlpha,
-  hexToRgb,
-  parseColor,
-  rgbToOklch,
-  toHex,
-  withAlpha,
-  withHex,
-} from "@/lib/ds/color"
+import { BASE_COLORS, applyBaseColor } from "@/lib/ds/base-colors"
+import { contrastLevel, contrastRatio, formatOklch, getAlpha, hexToRgb, parseColor, rgbToOklch, toHex, withAlpha, withHex } from "@/lib/ds/color"
 import { FONT_OPTIONS, type FontCategory } from "@/lib/ds/fonts"
-import { getPath } from "@/lib/ds/store"
 import {
   COLOR_GROUPS,
   CONTRAST_PAIRS,
+  CONTROL_COMPONENTS,
+  CONTROL_SIZES,
+  LINT_PRESETS,
+  LINT_RULES,
+  RADIUS_MULTIPLIER,
+  RADIUS_STEPS,
   SHADOW_LEVELS,
+  TEXT_STEPS,
+  TRACKING,
+  WEIGHTS,
+  normalizeTokens,
   type ColorToken,
   type DesignTokens,
   type FontTokens,
+  type LintLevel,
   type Mode,
   type ShadowLevel,
 } from "@/lib/ds/types"
@@ -44,7 +44,7 @@ export interface InspectorProps {
 /* Shared bits                                                         */
 /* ------------------------------------------------------------------ */
 
-function LockButton({ path, isLocked, toggleLock }: { path: string } & Pick<InspectorProps, "isLocked" | "toggleLock">) {
+export function LockButton({ path, isLocked, toggleLock }: { path: string } & Pick<InspectorProps, "isLocked" | "toggleLock">) {
   const locked = isLocked(path)
   const Icon = locked ? Icons.lock : Icons.unlock
   return (
@@ -65,7 +65,7 @@ function LockButton({ path, isLocked, toggleLock }: { path: string } & Pick<Insp
 }
 
 /** Text field that only commits valid values, on Enter or blur */
-function CommitInput({
+export function CommitInput({
   value,
   onCommit,
   validate,
@@ -116,15 +116,29 @@ function CommitInput({
   )
 }
 
-function ModeTabs({ mode, setMode }: Pick<InspectorProps, "mode" | "setMode">) {
+export function ModeTabs({ mode, setMode }: Pick<InspectorProps, "mode" | "setMode">) {
   return (
     <Segmented
       value={mode}
       onChange={setMode}
       className="w-full [&>button]:flex-1"
       options={[
-        { value: "light", label: (<><Icons.sun width={13} height={13} /> Light</>) },
-        { value: "dark", label: (<><Icons.moon width={13} height={13} /> Dark</>) },
+        {
+          value: "light",
+          label: (
+            <>
+              <Icons.sun width={13} height={13} /> Light
+            </>
+          ),
+        },
+        {
+          value: "dark",
+          label: (
+            <>
+              <Icons.moon width={13} height={13} /> Dark
+            </>
+          ),
+        },
       ]}
     />
   )
@@ -148,87 +162,177 @@ function ContrastBadge({ ratio }: { ratio: number | null }) {
   )
 }
 
-/* ------------------------------------------------------------------ */
-/* Colours                                                             */
-/* ------------------------------------------------------------------ */
+const CHECKER =
+  "linear-gradient(45deg,#e4e4e7 25%,transparent 25%),linear-gradient(-45deg,#e4e4e7 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e4e4e7 75%),linear-gradient(-45deg,transparent 75%,#e4e4e7 75%)"
 
-function ColorRow({
-  token,
+/** Colour swatch + native picker + value field + opacity */
+export function ColorField({
   label,
-  props,
+  sublabel,
+  value,
+  onChange,
+  disabled,
+  lock,
 }: {
-  token: ColorToken
   label: string
-  props: InspectorProps
+  sublabel?: string
+  value: string
+  onChange: (v: string, key?: string) => void
+  disabled?: boolean
+  lock?: React.ReactNode
 }) {
-  const { tokens, mode, update, isLocked } = props
-  const path = `colors.${mode}.${token}`
-  const value = tokens.colors[mode][token]
-  const locked = isLocked(path)
   const alpha = getAlpha(value)
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
         <label
-          className={cx(
-            "relative size-8 shrink-0 overflow-hidden rounded-[6px] border border-zinc-200",
-            locked ? "cursor-not-allowed" : "cursor-pointer"
-          )}
-          title={locked ? "Locked" : "Pick a colour"}
-          style={{
-            backgroundImage:
-              "linear-gradient(45deg,#e4e4e7 25%,transparent 25%),linear-gradient(-45deg,#e4e4e7 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e4e4e7 75%),linear-gradient(-45deg,transparent 75%,#e4e4e7 75%)",
-            backgroundSize: "8px 8px",
-            backgroundPosition: "0 0,0 4px,4px -4px,-4px 0",
-          }}
+          className={cx("relative size-8 shrink-0 overflow-hidden rounded-[6px] border border-zinc-200", disabled ? "cursor-not-allowed" : "cursor-pointer")}
+          title={disabled ? "Locked" : "Pick a colour"}
+          style={{ backgroundImage: CHECKER, backgroundSize: "8px 8px", backgroundPosition: "0 0,0 4px,4px -4px,-4px 0" }}
         >
           <span className="absolute inset-0" style={{ background: value }} />
           <input
             type="color"
-            disabled={locked}
+            disabled={disabled}
             aria-label={`${label} colour`}
             className="absolute inset-0 size-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
             value={toHex(value)}
-            onChange={(e) => update(path, withHex(value, e.target.value), path)}
+            onChange={(e) => onChange(withHex(value, e.target.value), `color:${label}`)}
           />
         </label>
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="truncate text-[12px] font-medium text-zinc-800">{label}</div>
-          <div className="truncate font-mono text-[10px] text-zinc-400">--{token}</div>
+          {sublabel && <div className="truncate font-mono text-[10px] text-zinc-400">{sublabel}</div>}
         </div>
-        <LockButton path={path} isLocked={isLocked} toggleLock={props.toggleLock} />
+        {lock}
       </div>
       <div className="flex items-center gap-1.5">
         <CommitInput
           value={value}
-          disabled={locked}
+          disabled={disabled}
           className="h-7 font-mono text-[11px]"
           aria-label={`${label} value`}
           validate={(v) => parseColor(v) != null}
           onCommit={(v) => {
             const rgb = parseColor(v)
             if (!rgb) return
-            // Store everything as OKLCH so adapters get one consistent format
-            update(path, v.trim().toLowerCase().startsWith("oklch") ? v : formatOklch(rgbToOklch(rgb)))
+            onChange(v.trim().toLowerCase().startsWith("oklch") ? v : formatOklch(rgbToOklch(rgb)))
           }}
         />
         <CommitInput
           value={String(Math.round(alpha * 100))}
-          disabled={locked}
+          disabled={disabled}
           className="h-7 w-14 shrink-0 text-right font-mono text-[11px]"
           aria-label={`${label} opacity percent`}
           title="Opacity %"
           validate={(v) => /^\d{1,3}$/.test(v) && Number(v) <= 100}
-          onCommit={(v) => update(path, withAlpha(value, Number(v) / 100))}
+          onCommit={(v) => onChange(withAlpha(value, Number(v) / 100))}
         />
       </div>
     </div>
   )
 }
 
+function NumberField({
+  value,
+  onCommit,
+  unit,
+  disabled,
+  placeholder,
+  label,
+  min = -10000,
+  max = 10000,
+  allowEmpty,
+}: {
+  value: number | undefined
+  onCommit: (v: number | undefined) => void
+  unit?: string
+  disabled?: boolean
+  placeholder?: string
+  label: string
+  min?: number
+  max?: number
+  allowEmpty?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      <CommitInput
+        value={value == null ? "" : String(value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        aria-label={label}
+        className="h-7 text-right font-mono text-[12px]"
+        validate={(v) => (v === "" ? !!allowEmpty : !Number.isNaN(Number(v)) && Number(v) >= min && Number(v) <= max)}
+        onCommit={(v) => onCommit(v === "" ? undefined : Number(v))}
+      />
+      {unit && <span className="w-6 shrink-0 text-[11px] text-zinc-500">{unit}</span>}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Colours                                                             */
+/* ------------------------------------------------------------------ */
+
+function ColorRow({ token, label, props }: { token: ColorToken; label: string; props: InspectorProps }) {
+  const { tokens, mode, update, isLocked } = props
+  const path = `colors.${mode}.${token}`
+  return (
+    <ColorField
+      label={label}
+      sublabel={`--${token}`}
+      value={tokens.colors[mode][token]}
+      disabled={isLocked(path)}
+      onChange={(v, key) => update(path, v, key ? path : undefined)}
+      lock={<LockButton path={path} isLocked={isLocked} toggleLock={props.toggleLock} />}
+    />
+  )
+}
+
+function CustomColors(props: InspectorProps) {
+  const t = normalizeTokens(props.tokens)
+  const list = t.customColors ?? []
+  const [name, setName] = React.useState("")
+  const valid = /^[a-z][a-z0-9-]{1,30}$/.test(name) && !list.some((c) => c.name === name) && !(name in t.colors.light)
+  const set = (next: typeof list, key?: string) => props.update("customColors", next, key)
+  return (
+    <PanelSection title="Custom colours">
+      <p className="text-[11px] text-zinc-500">Extra colours like success or warning. Use them as bg-success, text-warning…</p>
+      {list.map((c, i) => (
+        <div key={c.name} className="flex flex-col gap-2 rounded-[6px] border border-zinc-200 p-2">
+          <div className="flex items-center justify-between">
+            <span className="font-mono text-[12px] text-zinc-800">{c.name}</span>
+            <ChromeButton size="sm" variant="ghost" aria-label={`Remove ${c.name}`} onClick={() => set(list.filter((_, j) => j !== i))}>
+              <Icons.close width={12} height={12} />
+            </ChromeButton>
+          </div>
+          <ColorField
+            label={`${c.name} · ${props.mode}`}
+            value={props.mode === "dark" ? c.dark : c.light}
+            onChange={(v, key) => set(list.map((x, j) => (j === i ? { ...x, [props.mode]: v } : x)), key ? `custom:${c.name}` : undefined)}
+          />
+        </div>
+      ))}
+      <div className="flex gap-2">
+        <TextInput placeholder="name, e.g. success" value={name} onChange={(e) => setName(e.target.value.toLowerCase())} aria-label="New colour name" />
+        <ChromeButton
+          disabled={!valid}
+          onClick={() => {
+            set([...list, { name, light: "oklch(0.6 0.15 150)", dark: "oklch(0.7 0.15 150)" }])
+            setName("")
+          }}
+        >
+          Add
+        </ChromeButton>
+      </div>
+    </PanelSection>
+  )
+}
+
 export function ColorsPanel(props: InspectorProps) {
   const { tokens, mode } = props
   const [open, setOpen] = React.useState<Record<string, boolean>>({ base: true, primary: true })
+  const [base, setBase] = React.useState("")
   const colors = tokens.colors[mode]
   const fails = CONTRAST_PAIRS.filter(([s, t]) => {
     const r = contrastRatio(colors[t], colors[s], colors.background)
@@ -239,9 +343,7 @@ export function ColorsPanel(props: InspectorProps) {
     <>
       <PanelSection>
         <ModeTabs mode={mode} setMode={props.setMode} />
-        <p className="text-[11px] text-zinc-500">
-          Editing {mode} mode. The canvas switches to match.
-        </p>
+        <p className="text-[11px] text-zinc-500">Editing {mode} mode. The canvas switches to match.</p>
         {fails.length > 0 ? (
           <div className="flex items-start gap-2 rounded-[6px] bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900">
             <Icons.alert width={14} height={14} className="mt-px shrink-0" />
@@ -255,6 +357,31 @@ export function ColorsPanel(props: InspectorProps) {
             <Icons.check width={14} height={14} /> All text pairings pass 4.5:1 in {mode} mode
           </div>
         )}
+      </PanelSection>
+      <PanelSection title="Base colour">
+        <p className="text-[11px] text-zinc-500">
+          Start from a shadcn neutral palette. Replaces backgrounds, text, borders and surfaces in both modes; brand colours (primary,
+          charts, destructive) stay. Locked values are kept.
+        </p>
+        <div className="flex gap-2">
+          <SelectInput value={base} onChange={(e) => setBase(e.target.value)} aria-label="Base colour">
+            <option value="">Choose…</option>
+            {Object.keys(BASE_COLORS).map((b) => (
+              <option key={b} value={b}>
+                {b[0].toUpperCase() + b.slice(1)}
+              </option>
+            ))}
+          </SelectInput>
+          <ChromeButton
+            disabled={!base}
+            onClick={() => {
+              const next = applyBaseColor(tokens, base as keyof typeof BASE_COLORS)
+              props.updateMany(Object.entries(next).map(([p, v]) => [p, v]))
+            }}
+          >
+            Apply
+          </ChromeButton>
+        </div>
       </PanelSection>
       {COLOR_GROUPS.map((group) => {
         const isOpen = open[group.id] ?? false
@@ -292,6 +419,7 @@ export function ColorsPanel(props: InspectorProps) {
           </section>
         )
       })}
+      <CustomColors {...props} />
     </>
   )
 }
@@ -300,12 +428,7 @@ export function ColorsPanel(props: InspectorProps) {
 /* Typography                                                          */
 /* ------------------------------------------------------------------ */
 
-const CATEGORY_LABEL: Record<FontCategory, string> = {
-  sans: "Sans serif",
-  serif: "Serif",
-  display: "Display",
-  mono: "Monospace",
-}
+const CATEGORY_LABEL: Record<FontCategory, string> = { sans: "Sans serif", serif: "Serif", display: "Display", mono: "Monospace" }
 
 function FontPicker({ role, label, props }: { role: keyof FontTokens; label: string; props: InspectorProps }) {
   const path = `fonts.${role}`
@@ -325,9 +448,8 @@ function FontPicker({ role, label, props }: { role: keyof FontTokens; label: str
         disabled={locked}
         aria-label={`${label} font`}
         onChange={(e) => {
-          if (e.target.value === "__custom") {
-            setCustom(true)
-          } else {
+          if (e.target.value === "__custom") setCustom(true)
+          else {
             setCustom(false)
             props.update(path, e.target.value)
           }
@@ -359,15 +481,67 @@ function FontPicker({ role, label, props }: { role: keyof FontTokens; label: str
 }
 
 export function TypographyPanel(props: InspectorProps) {
+  const t = normalizeTokens(props.tokens)
+  const scaleLocked = props.isLocked("typeScale")
   return (
-    <PanelSection title="Font families">
-      <FontPicker role="sans" label="Body" props={props} />
-      <FontPicker role="heading" label="Headings" props={props} />
-      <FontPicker role="mono" label="Code" props={props} />
-      <p className="text-[11px] text-zinc-500">
-        Fonts load from Google Fonts. Pick &quot;Other Google font&quot; to use any family on fonts.google.com.
-      </p>
-    </PanelSection>
+    <>
+      <PanelSection title="Fonts">
+        <FontPicker role="sans" label="Body" props={props} />
+        <FontPicker role="heading" label="Headings" props={props} />
+        <FontPicker role="mono" label="Code" props={props} />
+        <p className="text-[11px] text-zinc-500">Fonts load from Google Fonts.</p>
+      </PanelSection>
+      <PanelSection title="Sizes" action={<LockButton path="typeScale" isLocked={props.isLocked} toggleLock={props.toggleLock} />}>
+        <div className="grid grid-cols-[3rem_1fr_1fr] items-center gap-x-2 gap-y-1.5 text-[11px] text-zinc-500">
+          <span />
+          <span>Size</span>
+          <span>Line height</span>
+          {TEXT_STEPS.map((s) => (
+            <React.Fragment key={s}>
+              <span className="font-mono text-zinc-700">{s}</span>
+              <NumberField
+                label={`text-${s} size`}
+                value={t.typeScale![s].size}
+                unit="px"
+                min={6}
+                max={200}
+                disabled={scaleLocked}
+                onCommit={(v) => props.update(`typeScale.${s}`, { ...t.typeScale![s], size: v ?? t.typeScale![s].size })}
+              />
+              <NumberField
+                label={`text-${s} line height`}
+                value={t.typeScale![s].lineHeight}
+                unit="px"
+                min={6}
+                max={240}
+                disabled={scaleLocked}
+                onCommit={(v) => props.update(`typeScale.${s}`, { ...t.typeScale![s], lineHeight: v ?? t.typeScale![s].lineHeight })}
+              />
+            </React.Fragment>
+          ))}
+        </div>
+      </PanelSection>
+      <PanelSection title="Weights">
+        <div className="grid grid-cols-[1fr_6rem] items-center gap-x-2 gap-y-1.5 text-[11px]">
+          {WEIGHTS.map((w) => (
+            <React.Fragment key={w}>
+              <span className="text-zinc-700">{w}</span>
+              <NumberField label={`${w} weight`} value={t.fontWeights![w]} min={1} max={1000} disabled={scaleLocked} onCommit={(v) => props.update(`fontWeights.${w}`, v ?? t.fontWeights![w])} />
+            </React.Fragment>
+          ))}
+        </div>
+      </PanelSection>
+      <PanelSection title="Letter spacing">
+        <div className="grid grid-cols-[1fr_6rem] items-center gap-x-2 gap-y-1.5 text-[11px]">
+          {TRACKING.map((tr) => (
+            <React.Fragment key={tr}>
+              <span className="text-zinc-700">{tr}</span>
+              <NumberField label={`${tr} tracking`} value={t.tracking![tr]} unit="em" min={-1} max={1} disabled={scaleLocked} onCommit={(v) => props.update(`tracking.${tr}`, v ?? t.tracking![tr])} />
+            </React.Fragment>
+          ))}
+        </div>
+      </PanelSection>
+    </>
   )
 }
 
@@ -399,36 +573,14 @@ function NumberSlider({
   return (
     <PanelSection title={label} action={<LockButton path={path} isLocked={props.isLocked} toggleLock={props.toggleLock} />}>
       <div className="flex items-center gap-3">
-        <RangeInput
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          disabled={locked}
-          aria-label={label}
-          onChange={(e) => props.update(path, Number(e.target.value), path)}
-        />
-        <div className="flex w-24 shrink-0 items-center gap-1">
-          <CommitInput
-            value={String(value)}
-            disabled={locked}
-            className="h-7 text-right font-mono text-[12px]"
-            aria-label={`${label} in ${unit}`}
-            validate={(v) => !Number.isNaN(Number(v)) && Number(v) >= 0 && Number(v) <= max * 2}
-            onCommit={(v) => props.update(path, Number(v))}
-          />
-          <span className="text-[11px] text-zinc-500">{unit}</span>
+        <RangeInput min={min} max={max} step={step} value={value} disabled={locked} aria-label={label} onChange={(e) => props.update(path, Number(e.target.value), path)} />
+        <div className="w-24 shrink-0">
+          <NumberField label={`${label} in ${unit}`} value={value} unit={unit} min={0} max={max * 2} disabled={locked} onCommit={(v) => props.update(path, v ?? value)} />
         </div>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {presets.map((p) => (
-          <ChromeButton
-            key={p}
-            size="sm"
-            disabled={locked}
-            variant={p === value ? "primary" : "default"}
-            onClick={() => props.update(path, p)}
-          >
+          <ChromeButton key={p} size="sm" disabled={locked} variant={p === value ? "primary" : "default"} onClick={() => props.update(path, p)}>
             {p}
           </ChromeButton>
         ))}
@@ -439,33 +591,42 @@ function NumberSlider({
 }
 
 export function RadiusPanel(props: InspectorProps) {
+  const t = normalizeTokens(props.tokens)
   return (
-    <NumberSlider
-      path="radius"
-      label="Base radius"
-      min={0}
-      max={1.5}
-      step={0.025}
-      unit="rem"
-      presets={[0, 0.25, 0.5, 0.625, 0.75, 0.875, 1]}
-      props={props}
-    />
+    <>
+      <NumberSlider path="radius" label="Base radius" min={0} max={1.5} step={0.025} unit="rem" presets={[0, 0.25, 0.5, 0.625, 0.75, 0.875, 1]} props={props} />
+      <PanelSection title="Steps">
+        <p className="text-[11px] text-zinc-500">Each step is the base × a multiplier. Type a value to fix a step; clear it to go back to the calculated value.</p>
+        <div className="grid grid-cols-[4.5rem_1fr] items-center gap-x-2 gap-y-1.5 text-[11px]">
+          {RADIUS_STEPS.map((s) => (
+            <React.Fragment key={s}>
+              <span className="font-mono text-zinc-700">--radius-{s}</span>
+              <NumberField
+                label={`radius ${s}`}
+                value={t.radiusSteps?.[s]}
+                placeholder={String(Math.round(t.radius * RADIUS_MULTIPLIER[s] * 1000) / 1000)}
+                unit="rem"
+                min={0}
+                max={10}
+                allowEmpty
+                disabled={props.isLocked("radius")}
+                onCommit={(v) => {
+                  const next = { ...t.radiusSteps }
+                  if (v == null) delete next[s]
+                  else next[s] = v
+                  props.update("radiusSteps", next)
+                }}
+              />
+            </React.Fragment>
+          ))}
+        </div>
+      </PanelSection>
+    </>
   )
 }
 
 export function SpacingPanel(props: InspectorProps) {
-  return (
-    <NumberSlider
-      path="spacing"
-      label="Base spacing unit"
-      min={0.2}
-      max={0.32}
-      step={0.005}
-      unit="rem"
-      presets={[0.22, 0.25, 0.275, 0.3]}
-      props={props}
-    />
-  )
+  return <NumberSlider path="spacing" label="Base spacing unit" min={0.2} max={0.32} step={0.005} unit="rem" presets={[0.22, 0.25, 0.275, 0.3]} props={props} />
 }
 
 /* ------------------------------------------------------------------ */
@@ -482,73 +643,56 @@ const SHADOW_SHAPE: Record<ShadowLevel, { y: number; blur: number; opacity: numb
   "2xl": { y: 6, blur: 30, opacity: 1.5 },
 }
 
-function generateShadows(color: string, opacity: number, distance: number, softness: number) {
+function generateShadows(color: string, opacity: number, distance: number, softness: number, spread: number, x: number) {
   const rgb = hexToRgb(color) ?? { r: 0, g: 0, b: 0, alpha: 1 }
   const out = {} as Record<ShadowLevel, string>
+  const r = (n: number) => Math.round(n * 10) / 10
   for (const level of SHADOW_LEVELS) {
     const s = SHADOW_SHAPE[level]
     const c = formatOklch(rgbToOklch({ ...rgb, alpha: Math.min(1, (opacity / 100) * s.opacity) }))
-    const r = (n: number) => Math.round(n * 10) / 10
-    out[level] = `0px ${r(s.y * distance)}px ${r(s.blur * softness)}px 0px ${c}`
+    out[level] = `${r(x * s.y)}px ${r(s.y * distance)}px ${r(s.blur * softness)}px ${r(spread)}px ${c}`
   }
   return out
 }
 
 export function ShadowsPanel(props: InspectorProps) {
   const { tokens, mode } = props
-  const [color, setColor] = React.useState("#1b2a38")
-  const [opacity, setOpacity] = React.useState(10)
-  const [distance, setDistance] = React.useState(1)
-  const [softness, setSoftness] = React.useState(1)
+  const [g, setG] = React.useState({ color: "#1b2a38", opacity: 10, distance: 1, softness: 1, spread: 0, x: 0 })
   const anyLocked = SHADOW_LEVELS.some((l) => props.isLocked(`shadows.${mode}.${l}`))
-
-  const apply = (next: { color?: string; opacity?: number; distance?: number; softness?: number }) => {
-    const c = next.color ?? color
-    const o = next.opacity ?? opacity
-    const d = next.distance ?? distance
-    const s = next.softness ?? softness
-    const gen = generateShadows(c, o, d, s)
+  const apply = (patch: Partial<typeof g>) => {
+    const next = { ...g, ...patch }
+    setG(next)
+    const gen = generateShadows(next.color, next.opacity, next.distance, next.softness, next.spread, next.x)
     props.updateMany(
       SHADOW_LEVELS.filter((l) => !props.isLocked(`shadows.${mode}.${l}`)).map((l) => [`shadows.${mode}.${l}`, gen[l]]),
       `shadows-gen-${mode}`
     )
   }
-
+  const slider = (label: string, key: keyof typeof g, min: number, max: number, step: number, unit = "") => (
+    <FieldRow label={`${label} · ${g[key]}${unit}`}>
+      <RangeInput min={min} max={max} step={step} value={g[key] as number} onChange={(e) => apply({ [key]: Number(e.target.value) })} />
+    </FieldRow>
+  )
   return (
     <>
       <PanelSection>
         <ModeTabs mode={mode} setMode={props.setMode} />
       </PanelSection>
-      <PanelSection title="Generate a scale">
-        <p className="text-[11px] text-zinc-500">
-          Adjust these to rewrite every {mode}-mode shadow level at once{anyLocked ? " (locked levels are skipped)" : ""}.
-        </p>
-        <FieldRow label="Shadow colour">
+      <PanelSection title="Generate a ramp">
+        <p className="text-[11px] text-zinc-500">Rewrites every {mode}-mode shadow level at once{anyLocked ? " (locked levels are skipped)" : ""}.</p>
+        <FieldRow label="Colour">
           <div className="flex items-center gap-2">
-            <input
-              type="color"
-              value={color}
-              aria-label="Shadow colour"
-              className="size-8 cursor-pointer rounded-[6px] border border-zinc-200"
-              onChange={(e) => {
-                setColor(e.target.value)
-                apply({ color: e.target.value })
-              }}
-            />
-            <span className="font-mono text-[11px] text-zinc-500">{color}</span>
+            <input type="color" value={g.color} aria-label="Shadow colour" className="size-8 cursor-pointer rounded-[6px] border border-zinc-200" onChange={(e) => apply({ color: e.target.value })} />
+            <span className="font-mono text-[11px] text-zinc-500">{g.color}</span>
           </div>
         </FieldRow>
-        <FieldRow label={`Strength · ${opacity}%`}>
-          <RangeInput min={0} max={40} step={1} value={opacity} onChange={(e) => { setOpacity(Number(e.target.value)); apply({ opacity: Number(e.target.value) }) }} />
-        </FieldRow>
-        <FieldRow label={`Distance · ${distance}×`}>
-          <RangeInput min={0} max={3} step={0.1} value={distance} onChange={(e) => { setDistance(Number(e.target.value)); apply({ distance: Number(e.target.value) }) }} />
-        </FieldRow>
-        <FieldRow label={`Softness · ${softness}×`}>
-          <RangeInput min={0.2} max={3} step={0.1} value={softness} onChange={(e) => { setSoftness(Number(e.target.value)); apply({ softness: Number(e.target.value) }) }} />
-        </FieldRow>
+        {slider("Strength", "opacity", 0, 40, 1, "%")}
+        {slider("Distance", "distance", 0, 3, 0.1, "×")}
+        {slider("Softness", "softness", 0.2, 3, 0.1, "×")}
+        {slider("Spread", "spread", -4, 4, 0.5, "px")}
+        {slider("Offset X", "x", -2, 2, 0.1, "×")}
       </PanelSection>
-      <PanelSection title="Levels">
+      <PanelSection title="Ramp">
         {SHADOW_LEVELS.map((level) => {
           const path = `shadows.${mode}.${level}`
           return (
@@ -574,19 +718,309 @@ export function ShadowsPanel(props: InspectorProps) {
 }
 
 /* ------------------------------------------------------------------ */
-/* System overview (shown for the overview and components)            */
+/* Controls                                                            */
+/* ------------------------------------------------------------------ */
+
+export function ControlsPanel(props: InspectorProps) {
+  const t = normalizeTokens(props.tokens)
+  const c = t.controls!
+  const locked = props.isLocked("controls")
+  return (
+    <>
+      <PanelSection title="Heights" action={<LockButton path="controls" isLocked={props.isLocked} toggleLock={props.toggleLock} />}>
+        <div className="grid grid-cols-[4rem_1fr] items-center gap-x-2 gap-y-1.5 text-[11px]">
+          {CONTROL_SIZES.map((s) => (
+            <React.Fragment key={s}>
+              <span className="font-mono text-zinc-700">{s}</span>
+              <NumberField label={`${s} height`} value={c.heights[s]} unit="px" min={12} max={96} disabled={locked} onCommit={(v) => props.update(`controls.heights.${s}`, v ?? c.heights[s])} />
+            </React.Fragment>
+          ))}
+        </div>
+      </PanelSection>
+      <PanelSection title="Follow these heights">
+        {CONTROL_COMPONENTS.map((comp) => (
+          <label key={comp.id} className="flex items-center justify-between gap-2 text-[12px] text-zinc-700">
+            {comp.label}
+            <input
+              type="checkbox"
+              className="size-4 accent-zinc-900"
+              checked={c.follow.includes(comp.id)}
+              disabled={locked}
+              onChange={(e) => props.update("controls.follow", e.target.checked ? [...c.follow, comp.id] : c.follow.filter((x) => x !== comp.id))}
+            />
+          </label>
+        ))}
+      </PanelSection>
+      <PanelSection title="Focus">
+        <Segmented
+          value={c.focus.style}
+          onChange={(v) => props.update("controls.focus.style", v)}
+          className="w-full [&>button]:flex-1"
+          options={[
+            { value: "default", label: "Default" },
+            { value: "ring", label: "Ring" },
+            { value: "outline", label: "Outline" },
+          ]}
+        />
+        {c.focus.style === "default" ? (
+          <p className="text-[11px] text-zinc-500">Each component keeps its own focus ring.</p>
+        ) : (
+          <div className="grid grid-cols-[4rem_1fr] items-center gap-x-2 gap-y-1.5 text-[11px]">
+            <span className="text-zinc-700">Width</span>
+            <NumberField label="Focus width" value={c.focus.width} unit="px" min={0} max={12} disabled={locked} onCommit={(v) => props.update("controls.focus.width", v ?? 3)} />
+            <span className="text-zinc-700">Offset</span>
+            <NumberField label="Focus offset" value={c.focus.offset} unit="px" min={0} max={12} disabled={locked} onCommit={(v) => props.update("controls.focus.offset", v ?? 0)} />
+            <span className="text-zinc-700">Strength</span>
+            <NumberField label="Focus strength" value={c.focus.strength} unit="%" min={0} max={100} disabled={locked} onCommit={(v) => props.update("controls.focus.strength", v ?? 50)} />
+          </div>
+        )}
+      </PanelSection>
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Icons                                                               */
+/* ------------------------------------------------------------------ */
+
+export function IconsPanel(props: InspectorProps) {
+  const t = normalizeTokens(props.tokens)
+  return (
+    <>
+      <PanelSection title="Library">
+        <SelectInput value="hugeicons" disabled aria-label="Icon library">
+          <option value="hugeicons">HugeIcons</option>
+        </SelectInput>
+        <p className="text-[11px] text-zinc-500">
+          The components are built with HugeIcons. Switching to another library means reinstalling them with that library (for example by
+          changing it in DS Manager and running the sync).
+        </p>
+      </PanelSection>
+      <PanelSection title="Icon style" action={<LockButton path="icons" isLocked={props.isLocked} toggleLock={props.toggleLock} />}>
+        <FieldRow label={`Stroke · ${t.icons!.strokeWidth}`}>
+          <RangeInput min={0.5} max={3} step={0.25} value={t.icons!.strokeWidth} disabled={props.isLocked("icons")} onChange={(e) => props.update("icons.strokeWidth", Number(e.target.value), "icons.stroke")} />
+        </FieldRow>
+      </PanelSection>
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Brand                                                               */
+/* ------------------------------------------------------------------ */
+
+export interface PendingAsset {
+  repoPath: string
+  content: string
+  dataUrl: string
+}
+
+/** Strip scripts and event handlers from an uploaded SVG */
+export function sanitizeSvg(text: string): string | null {
+  const svg = text.replace(/<\?xml[^>]*>/g, "").replace(/<!DOCTYPE[^>]*>/gi, "").trim()
+  if (!/^<svg[\s>]/i.test(svg)) return null
+  return svg
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*')/gi, "")
+    .replace(/(href|xlink:href)\s*=\s*("javascript:[^"]*"|'javascript:[^']*')/gi, "")
+}
+
+const ASSET_SLOTS = {
+  logoLight: { label: "Logo (light)", path: "/brand/logo.svg", repo: "public/brand/logo.svg" },
+  logoDark: { label: "Logo (dark)", path: "/brand/logo-dark.svg", repo: "public/brand/logo-dark.svg" },
+  markLight: { label: "Mark (light)", path: "/brand/mark.svg", repo: "public/brand/mark.svg" },
+  markDark: { label: "Mark (dark)", path: "/brand/mark-dark.svg", repo: "public/brand/mark-dark.svg" },
+  favicon: { label: "Favicon", path: "/icon.svg", repo: "app/icon.svg" },
+} as const
+
+export function BrandPanel(props: InspectorProps & { onAsset: (path: string, asset: PendingAsset) => void; onError: (msg: string) => void }) {
+  const t = normalizeTokens(props.tokens)
+  const b = t.brand!
+  const locked = props.isLocked("brand")
+  const upload = (key: keyof typeof ASSET_SLOTS) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ""
+    if (!file) return
+    if (file.size > 500_000) return props.onError("That SVG is over 500 KB. Use a smaller file.")
+    file.text().then((text) => {
+      const svg = sanitizeSvg(text)
+      if (!svg) return props.onError("That file isn't an SVG.")
+      const slot = ASSET_SLOTS[key]
+      // A fresh path each time so the browser doesn't show a cached old file
+      const path = key === "favicon" ? slot.path : slot.path.replace(".svg", `-${Date.now().toString(36)}.svg`)
+      const repoPath = key === "favicon" ? slot.repo : `public${path}`
+      props.onAsset(path, { repoPath, content: svg, dataUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}` })
+      props.update(`brand.${key}`, path)
+    })
+  }
+  const fileRow = (key: keyof typeof ASSET_SLOTS) => (
+    <div className="flex items-center gap-2">
+      <span className="w-24 shrink-0 text-[12px] text-zinc-600">{ASSET_SLOTS[key].label}</span>
+      <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-zinc-500">{b[key] ?? "none"}</span>
+      <label className={cx("inline-flex h-7 cursor-pointer items-center rounded-[6px] border border-zinc-200 px-2 text-[12px] hover:bg-zinc-50", locked && "pointer-events-none opacity-40")}>
+        Upload
+        <input type="file" accept=".svg,image/svg+xml" className="sr-only" onChange={upload(key)} disabled={locked} />
+      </label>
+      {b[key] && key !== "favicon" && (
+        <ChromeButton size="sm" variant="ghost" aria-label={`Remove ${ASSET_SLOTS[key].label}`} disabled={locked} onClick={() => props.update(`brand.${key}`, undefined)}>
+          <Icons.close width={12} height={12} />
+        </ChromeButton>
+      )}
+    </div>
+  )
+  return (
+    <>
+      <PanelSection title="Logo" action={<LockButton path="brand" isLocked={props.isLocked} toggleLock={props.toggleLock} />}>
+        {fileRow("logoLight")}
+        {fileRow("logoDark")}
+        <FieldRow group label="Dark mode without a dark logo">
+          <Segmented
+            value={b.darkFallback}
+            onChange={(v) => props.update("brand.darkFallback", v)}
+            className="w-full [&>button]:flex-1"
+            options={[
+              { value: "light", label: "Use light logo" },
+              { value: "text", label: "Show name" },
+            ]}
+          />
+        </FieldRow>
+        <div className="grid grid-cols-[4rem_1fr] items-center gap-2 text-[11px]">
+          <span className="text-zinc-700">Height</span>
+          <NumberField label="Logo height" value={b.logoHeight} unit="px" min={8} max={120} disabled={locked} onCommit={(v) => props.update("brand.logoHeight", v ?? 24)} />
+        </div>
+      </PanelSection>
+      <PanelSection title="Mark">
+        {fileRow("markLight")}
+        {fileRow("markDark")}
+        <div className="grid grid-cols-[4rem_1fr] items-center gap-2 text-[11px]">
+          <span className="text-zinc-700">Height</span>
+          <NumberField label="Mark height" value={b.markHeight} unit="px" min={8} max={160} disabled={locked} onCommit={(v) => props.update("brand.markHeight", v ?? 32)} />
+        </div>
+      </PanelSection>
+      <PanelSection title="Favicon">
+        {fileRow("favicon")}
+        <p className="text-[11px] text-zinc-500">SVG files only. Uploads are saved to the repo with your next Save.</p>
+      </PanelSection>
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Style (menus)                                                       */
+/* ------------------------------------------------------------------ */
+
+export function StylePanel(props: InspectorProps & { onImport: () => void }) {
+  const t = normalizeTokens(props.tokens)
+  return (
+    <>
+      <PanelSection title="Base style">
+        <div className="flex items-center justify-between text-[12px]">
+          <span className="text-zinc-600">Style</span>
+          <span className="font-medium text-zinc-900">Vega</span>
+        </div>
+        <p className="text-[11px] text-zinc-500">The component set this system was installed with (from DS Manager).</p>
+      </PanelSection>
+      <PanelSection title="Menus" action={<LockButton path="menu" isLocked={props.isLocked} toggleLock={props.toggleLock} />}>
+        <FieldRow group label="Menu">
+          <Segmented
+            value={t.menu!.color}
+            onChange={(v) => !props.isLocked("menu") && props.update("menu.color", v)}
+            className="w-full [&>button]:flex-1"
+            options={[
+              { value: "default", label: "Default" },
+              { value: "inverted", label: "Inverted" },
+            ]}
+          />
+        </FieldRow>
+        <FieldRow group label="Highlighted item">
+          <Segmented
+            value={t.menu!.accent}
+            onChange={(v) => !props.isLocked("menu") && props.update("menu.accent", v)}
+            className="w-full [&>button]:flex-1"
+            options={[
+              { value: "subtle", label: "Subtle" },
+              { value: "bold", label: "Bold" },
+            ]}
+          />
+        </FieldRow>
+        <p className="text-[11px] text-zinc-500">Applies to dropdown, context, menubar, select and combobox menus.</p>
+      </PanelSection>
+      <PanelSection title="Import preset">
+        <p className="text-[11px] text-zinc-500">Paste theme CSS from DS Manager, tweakcn or ui.shadcn.com/themes.</p>
+        <ChromeButton onClick={props.onImport}>
+          <Icons.upload /> Import CSS…
+        </ChromeButton>
+      </PanelSection>
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Lint                                                                */
+/* ------------------------------------------------------------------ */
+
+export function LintPanel(props: InspectorProps) {
+  const t = normalizeTokens(props.tokens)
+  const rules = t.lint!.rules
+  const preset = (Object.keys(LINT_PRESETS) as (keyof typeof LINT_PRESETS)[]).find((p) => JSON.stringify(LINT_PRESETS[p]) === JSON.stringify(rules))
+  return (
+    <>
+      <PanelSection title="Strictness">
+        <Segmented
+          value={preset ?? ("custom" as string)}
+          onChange={(v) => v !== "custom" && props.update("lint.rules", LINT_PRESETS[v as keyof typeof LINT_PRESETS])}
+          className="w-full [&>button]:flex-1"
+          options={[
+            { value: "off", label: "Off" },
+            { value: "relaxed", label: "Relaxed" },
+            { value: "balanced", label: "Balanced" },
+            { value: "strict", label: "Strict" },
+          ]}
+        />
+        {!preset && <p className="text-[11px] text-zinc-500">Custom mix of rules.</p>}
+      </PanelSection>
+      <PanelSection title="Rules">
+        {LINT_RULES.map((r) => (
+          <div key={r.id} className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[12px] font-medium text-zinc-800">{r.label}</span>
+              <Segmented
+                value={rules[r.id]}
+                onChange={(v) => props.update(`lint.rules.${r.id}`, v as LintLevel)}
+                options={[
+                  { value: "off", label: "Off" },
+                  { value: "warn", label: "Warn" },
+                  { value: "error", label: "Error" },
+                ]}
+              />
+            </div>
+            <p className="text-[11px] text-zinc-500">{r.description}</p>
+          </div>
+        ))}
+      </PanelSection>
+      <PanelSection title="Where rules run">
+        <p className="text-[11px] text-zinc-500">
+          In <code>npm run lint</code>, in the Lint check on every push to GitHub, and for AI tools via AGENTS.md. Saved with the design system.
+        </p>
+      </PanelSection>
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* System overview                                                     */
 /* ------------------------------------------------------------------ */
 
 export function SystemPanel(props: InspectorProps & { onNavigate: (view: string) => void }) {
   const { tokens, mode } = props
+  const t = normalizeTokens(tokens)
   const failsBy = (m: Mode) =>
-    CONTRAST_PAIRS.filter(([s, t]) => {
+    CONTRAST_PAIRS.filter(([s, tt]) => {
       const c = tokens.colors[m]
-      const r = contrastRatio(c[t], c[s], c.background)
+      const r = contrastRatio(c[tt], c[s], c.background)
       return r != null && r < 4.5
     }).length
-  const primaryPath = `colors.${mode}.primary`
-  const locks = tokens.locks ?? []
+  const locks = t.locks ?? []
 
   return (
     <>
@@ -595,11 +1029,7 @@ export function SystemPanel(props: InspectorProps & { onNavigate: (view: string)
           <CommitInput value={tokens.name} aria-label="System name" validate={(v) => v.length > 0} onCommit={(v) => props.update("name", v)} />
         </FieldRow>
         <FieldRow label="Description">
-          <CommitInput
-            value={tokens.description ?? ""}
-            aria-label="System description"
-            onCommit={(v) => props.update("description", v)}
-          />
+          <CommitInput value={tokens.description ?? ""} aria-label="System description" onCommit={(v) => props.update("description", v)} />
         </FieldRow>
       </PanelSection>
 
@@ -608,18 +1038,9 @@ export function SystemPanel(props: InspectorProps & { onNavigate: (view: string)
         <ColorRow token="primary" label="Primary" props={props} />
         <ColorRow token="primary-foreground" label="Primary text" props={props} />
         <FieldRow label={`Radius · ${tokens.radius}rem`}>
-          <RangeInput
-            min={0}
-            max={1.5}
-            step={0.025}
-            value={tokens.radius}
-            disabled={props.isLocked("radius")}
-            onChange={(e) => props.update("radius", Number(e.target.value), "radius")}
-          />
+          <RangeInput min={0} max={1.5} step={0.025} value={tokens.radius} disabled={props.isLocked("radius")} onChange={(e) => props.update("radius", Number(e.target.value), "radius")} />
         </FieldRow>
-        <ChromeButton size="sm" variant="ghost" className="self-start" onClick={() => props.onNavigate("foundation:colors")}>
-          All colours <Icons.chevron width={12} height={12} />
-        </ChromeButton>
+        <p className="text-[11px] text-zinc-500">Click any part of the canvas to edit that component.</p>
       </PanelSection>
 
       <PanelSection title="Health">
@@ -636,22 +1057,19 @@ export function SystemPanel(props: InspectorProps & { onNavigate: (view: string)
                 }}
                 className="flex items-center justify-between rounded-[6px] px-2 py-1.5 text-left hover:bg-zinc-50"
               >
-                <span className="capitalize text-zinc-700">{m} mode contrast</span>
-                {n === 0 ? (
-                  <span className="text-emerald-700">All pass</span>
-                ) : (
-                  <span className="text-amber-700">
-                    {n} below 4.5:1
-                  </span>
-                )}
+                <span className="text-zinc-700">{m === "light" ? "Light" : "Dark"} mode contrast</span>
+                {n === 0 ? <span className="text-emerald-700">All pass</span> : <span className="text-amber-700">{n} below 4.5:1</span>}
               </button>
             )
           })}
-          <div className="flex items-center justify-between px-2 py-1.5">
+          <button type="button" onClick={() => props.onNavigate("lint")} className="flex items-center justify-between rounded-[6px] px-2 py-1.5 text-left hover:bg-zinc-50">
             <span className="text-zinc-700">Locked values</span>
             <span className="text-zinc-500">{locks.length}</span>
+          </button>
+          <div className="flex items-center justify-between px-2 py-1.5">
+            <span className="text-zinc-700">Component changes</span>
+            <span className="text-zinc-500">{t.overrides?.length ?? 0}</span>
           </div>
-          {props.isLocked(primaryPath) && <p className="px-2 text-[11px] text-amber-700">Primary is locked in {mode} mode.</p>}
         </div>
       </PanelSection>
 
@@ -662,12 +1080,8 @@ export function SystemPanel(props: InspectorProps & { onNavigate: (view: string)
             <span className="text-[11px] text-zinc-500">{a.description}</span>
           </div>
         ))}
-        <p className="text-[11px] text-zinc-500">
-          Tokens are stored library-neutral in design-system/tokens.json. Each library adapter writes its own theme file.
-        </p>
+        <p className="text-[11px] text-zinc-500">Tokens are stored library-neutral in design-system/tokens.json. Each library adapter writes its own theme file.</p>
       </PanelSection>
     </>
   )
 }
-
-export { getPath }

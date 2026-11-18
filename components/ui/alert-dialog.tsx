@@ -154,6 +154,8 @@ function AlertDialogCancel({
   return (
     <AlertDialogPrimitive.Close
       data-slot="alert-dialog-cancel"
+      data-variant={variant ?? "default"}
+      data-size={size ?? "default"}
       className={cn(className)}
       render={<Button variant={variant} size={size} />}
       {...props}
