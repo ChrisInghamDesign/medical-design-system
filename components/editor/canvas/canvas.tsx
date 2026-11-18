@@ -6,6 +6,7 @@ import initialTokens from "@/design-system/tokens.json"
 import { ACTIVE_ADAPTER } from "@/lib/ds/adapters"
 import { BASE_PATH, type CanvasDisplay, type CanvasLayer, type CanvasToEditor, type EditorToCanvas } from "@/lib/ds/bridge"
 import { googleFontUrls } from "@/lib/ds/fonts"
+import { forcedStateCss } from "@/lib/ds/force-state"
 import { setIconSettings } from "@/lib/ds/icons"
 import { normalizeTokens, type DesignTokens, type Mode, type OverrideState } from "@/lib/ds/types"
 
@@ -71,6 +72,8 @@ interface Target {
   slot: string
   variant?: string
   size?: string
+  /** Picked by the editor, not the user: drives the inspector but isn't outlined */
+  auto?: boolean
 }
 
 function matches(el: HTMLElement, t: Target) {
@@ -207,7 +210,7 @@ export function Canvas() {
         setPreviewState(msg.state)
         setInteract(msg.interact)
       } else if (msg.type === "ds:select") {
-        setTarget(msg.slot ? { slot: msg.slot, variant: msg.variant, size: msg.size } : null)
+        setTarget(msg.slot ? { slot: msg.slot, variant: msg.variant, size: msg.size, auto: msg.auto } : null)
       }
     }
     window.addEventListener("message", onMessage)
@@ -215,11 +218,28 @@ export function Canvas() {
     return () => window.removeEventListener("message", onMessage)
   }, [])
 
-  // Forced state preview (hover, focus, …) for overrides
+  // State preview (hover, focus, …): your overrides for that state respond to the
+  // root class, and every component's own state styles are forced from the stylesheets
   React.useEffect(() => {
     const root = document.documentElement
     for (const s of STATES) root.classList.toggle(`ds-preview-${s}`, previewState === s)
-  }, [previewState])
+    let style = document.getElementById("ds-force-state") as HTMLStyleElement | null
+    if (!previewState) {
+      style?.remove()
+      return
+    }
+    // Rebuild shortly after changes, so dragging a slider doesn't rescan on every step
+    const id = window.setTimeout(() => {
+      if (!style) {
+        style = document.createElement("style")
+        style.id = "ds-force-state"
+      }
+      style.textContent = ""
+      style.textContent = forcedStateCss(document, previewState, ["ds-force-state"])
+      document.head.appendChild(style) // last, so it follows the stylesheets it copies
+    }, 60)
+    return () => window.clearTimeout(id)
+  }, [previewState, tokens])
 
   // Report layers whenever the page changes
   React.useEffect(() => {
@@ -449,8 +469,8 @@ export function Canvas() {
   return (
     <div className="bg-background min-h-screen">
       <DemoBoundary resetKey={`${view}:${display}`}>{body}</DemoBoundary>
-      {!interact && <Highlights target={target} hover={hover} />}
-      {interact && target && <Highlights target={target} hover={null} />}
+      {!interact && <Highlights target={target?.auto ? null : target} hover={hover} />}
+      {interact && target && !target.auto && <Highlights target={target} hover={null} />}
     </div>
   )
 }

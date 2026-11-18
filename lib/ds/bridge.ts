@@ -8,7 +8,7 @@ export type EditorToCanvas =
   | { type: "ds:ping" }
   | { type: "ds:tokens"; tokens: DesignTokens; mode: Mode; assets: Record<string, string> }
   | { type: "ds:view"; view: string; display: CanvasDisplay; state: OverrideState | null; interact: boolean }
-  | { type: "ds:select"; slot: string | null; variant?: string; size?: string }
+  | { type: "ds:select"; slot: string | null; variant?: string; size?: string; auto?: boolean }
 
 export interface CanvasLayer {
   slot: string

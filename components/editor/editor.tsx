@@ -297,7 +297,7 @@ export function Editor() {
   }, [view, display, previewState, canvasInteract, canvasReady, postToCanvas])
 
   React.useEffect(() => {
-    if (canvasReady) postToCanvas({ type: "ds:select", slot: selection?.slot ?? null, variant: selection?.variant, size: selection?.size })
+    if (canvasReady) postToCanvas({ type: "ds:select", slot: selection?.slot ?? null, variant: selection?.variant, size: selection?.size, auto: selection?.auto })
   }, [selection, canvasReady, postToCanvas])
 
   // On a component page, select the component's main part once the canvas reports its layers
@@ -307,7 +307,7 @@ export function Editor() {
     const own = Object.keys(COMPONENT_CLASSES[componentId]?.slots ?? {})
     const first = own.find((s) => layers.some((l) => l.slot === s))
     // eslint-disable-next-line react-hooks/set-state-in-effect -- default selection depends on what the canvas reports
-    if (first) setSelection({ slot: first })
+    if (first) setSelection({ slot: first, auto: true })
   }, [componentId, layers, selection])
 
   /* ---------- editing ---------- */

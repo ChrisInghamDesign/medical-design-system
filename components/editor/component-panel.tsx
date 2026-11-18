@@ -24,6 +24,8 @@ export interface Selection {
   slot: string
   variant?: string
   size?: string
+  /** Chosen automatically when a component page opens: not outlined on the canvas */
+  auto?: boolean
 }
 
 export const STATES: { value: OverrideState | "none"; label: string }[] = [
