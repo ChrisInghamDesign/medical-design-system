@@ -21,7 +21,7 @@ Then open http://localhost:3000.
 1. Make changes to **Medical (fork)** in DS Manager, then **Get code > Publish**.
 2. In this repo, go to **Actions > Sync design system > Run workflow**.
 
-The workflow pulls the latest tokens and components, checks the app still builds, and commits the changes. It also runs on every push to `main`.
+The workflow pulls the latest tokens and components, checks the app still builds, and commits the changes.
 
 To update by hand instead:
 
