@@ -1,0 +1,55 @@
+# Pulls the "Medical (fork)" design system from DS Manager into this repo.
+# Runs on every push to main, and on demand (Actions > Sync design system > Run workflow).
+# Re-run it after each "Publish" in DS Manager to pick up the latest tokens and components.
+name: Sync design system
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+env:
+  PRESET: https://manager.shadcndesign.com/u/mECmLpbfYTpb7nZlCv12D3VMheWaph7V/r/medical-copy/medical-copy.json
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Scaffold Next.js app (first run only)
+        run: |
+          if [ ! -f package.json ]; then
+            npx -y create-next-app@latest app-tmp --ts --tailwind --eslint --app --no-src-dir --import-alias "@/*" --use-npm --yes --disable-git
+            rm -rf app-tmp/node_modules
+            cp -rn app-tmp/. .
+            rm -rf app-tmp
+          fi
+          npm install
+
+      - name: Install design system from DS Manager
+        env:
+          CI: "1"
+        run: npx -y shadcn@latest init --preset "$PRESET" --force --no-reinstall
+
+      - name: Build check
+        run: npm run build
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Sync design system from DS Manager"
+            git push
+          fi
