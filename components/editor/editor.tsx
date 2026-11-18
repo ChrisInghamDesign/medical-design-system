@@ -257,8 +257,11 @@ export function Editor() {
   const tokenKey = `ds-editor:github-token:${repo.owner}/${repo.repo}`
 
   const assetList = React.useMemo(() => Object.values(assets), [assets])
-  const dirty = !sameTokens(tokens, baseline) || assetList.length > 0
-  const changes = React.useMemo(() => (sameTokens(tokens, baseline) ? [] : diffTokens(baseline, tokens)), [baseline, tokens])
+  // Compare with defaults filled in: writing out a default (e.g. switching back to Vega) isn't a change
+  const normTokens = React.useMemo(() => normalizeTokens(tokens), [tokens])
+  const normBaseline = React.useMemo(() => normalizeTokens(baseline), [baseline])
+  const changes = React.useMemo(() => (sameTokens(normTokens, normBaseline) ? [] : diffTokens(normBaseline, normTokens)), [normBaseline, normTokens])
+  const dirty = changes.length > 0 || assetList.length > 0
   const changeCount = changes.length + assetList.length
 
   const viewRef = React.useRef(view)
