@@ -1,5 +1,5 @@
 # Pulls the "Medical (fork)" design system from DS Manager into this repo.
-# Runs on every push to main, and on demand (Actions > Sync design system > Run workflow).
+# Run it on demand: Actions > Sync design system > Run workflow.
 # Re-run it after each "Publish" in DS Manager to pick up the latest tokens and components.
 name: Sync design system
 
@@ -7,6 +7,11 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+    paths: [".github/workflows/sync-design-system.yml"]
+
+concurrency:
+  group: sync-design-system
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -51,5 +56,6 @@ jobs:
             echo "No changes"
           else
             git commit -m "Sync design system from DS Manager"
+            git pull --rebase
             git push
           fi
