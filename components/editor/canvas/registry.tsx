@@ -45,10 +45,10 @@ export const CANVASES: Record<string, LibraryCanvas> = {
 }
 
 export const FOUNDATIONS = [
-  { id: "colors", name: "Colors", summary: "Light and dark palettes, contrast checks and custom colours" },
+  { id: "colors", name: "Color", summary: "Light and dark palettes, contrast checks and custom colours" },
   { id: "typography", name: "Typography", summary: "Fonts, type scale, weights and letter spacing" },
   { id: "radius", name: "Radius", summary: "Base radius and the scale calculated from it" },
-  { id: "shadows", name: "Shadows", summary: "The elevation ramp" },
+  { id: "shadows", name: "Shadow", summary: "The elevation ramp" },
   { id: "spacing", name: "Spacing", summary: "Base unit and density" },
   { id: "controls", name: "Controls", summary: "Control heights and focus style" },
   { id: "icons", name: "Icons", summary: "Icon library, stroke and roles" },

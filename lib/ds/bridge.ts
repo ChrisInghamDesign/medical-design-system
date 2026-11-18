@@ -2,12 +2,18 @@ import type { DesignTokens, Mode, OverrideState } from "./types"
 
 export type CanvasDisplay = "demo" | "matrix" | "preview"
 
+/** Filters on the All components page (set in the editor's toolbar) */
+export interface ComponentsFilter {
+  tab: "all" | "edited" | "variants" | "custom"
+  q: string
+}
+
 /** Messages from the editor to the canvas iframe */
 export type EditorToCanvas =
   /** Asks the canvas to (re)announce itself, in case its first ds:ready came before the editor was listening */
   | { type: "ds:ping" }
   | { type: "ds:tokens"; tokens: DesignTokens; mode: Mode; assets: Record<string, string> }
-  | { type: "ds:view"; view: string; display: CanvasDisplay; state: OverrideState | null; interact: boolean }
+  | { type: "ds:view"; view: string; display: CanvasDisplay; state: OverrideState | null; interact: boolean; filter?: ComponentsFilter }
   | { type: "ds:select"; slot: string | null; variant?: string; size?: string; auto?: boolean }
 
 export interface CanvasLayer {

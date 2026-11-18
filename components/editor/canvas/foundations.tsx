@@ -55,7 +55,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Toggle } from "@/components/ui/toggle"
 import { contrastLevel, contrastRatio } from "@/lib/ds/color"
 import {
-  COLOR_GROUPS,
+  CONTRAST_PAIRS,
+  type ColorToken,
   CONTROL_SIZES,
   RADIUS_MULTIPLIER,
   RADIUS_STEPS,
@@ -81,8 +82,8 @@ export function Section({ title, description, children }: { title: string; descr
   return (
     <section className="flex flex-col gap-4">
       <div>
-        <h2 className="font-heading text-xl font-semibold tracking-tight">{title}</h2>
-        {description && <p className="text-muted-foreground max-w-2xl text-sm">{description}</p>}
+        <h2 className="text-base font-semibold">{title}</h2>
+        {description && <p className="text-muted-foreground max-w-md text-sm">{description}</p>}
       </div>
       {children}
     </section>
@@ -91,9 +92,9 @@ export function Section({ title, description, children }: { title: string; descr
 
 function Tile({ label, children, className }: { label: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-card flex min-w-0 flex-col overflow-hidden rounded-xl border ${className ?? ""}`}>
+    <div className={`bg-card flex min-w-0 flex-col overflow-hidden rounded-2xl ${className ?? ""}`}>
       <div className="flex min-h-24 flex-1 items-center justify-center p-5">{children}</div>
-      <div className="text-muted-foreground border-t px-4 py-2 font-mono text-[11px]">{label}</div>
+      <div className="text-muted-foreground border-border/60 border-t px-4 py-2.5 font-mono text-[11px]">{label}</div>
     </div>
   )
 }
@@ -102,56 +103,75 @@ function Tile({ label, children, className }: { label: React.ReactNode; children
 /* Colours                                                             */
 /* ------------------------------------------------------------------ */
 
+/** Colour groups as the Color page shows them */
+const COLOR_SECTIONS: { title: string; description: string; tokens: ColorToken[]; wide?: boolean }[] = [
+  { title: "Base", description: "The page itself and the text written on it.", tokens: ["background", "foreground"], wide: true },
+  { title: "Card & popover", description: "Raised surfaces and the text they carry.", tokens: ["card", "card-foreground", "popover", "popover-foreground"] },
+  {
+    title: "Primary, secondary, muted & accent",
+    description: "The fills that carry actions and emphasis, each with its text colour.",
+    tokens: ["primary", "primary-foreground", "secondary", "secondary-foreground", "muted", "muted-foreground", "accent", "accent-foreground"],
+  },
+  { title: "Destructive", description: "Reserved for deleting, discarding and anything that can't be undone.", tokens: ["destructive"] },
+  { title: "Border, input & ring", description: "Hairlines, field outlines and the focus ring.", tokens: ["border", "input", "ring"] },
+  { title: "Charts", description: "Five series colours that stay distinct at a glance.", tokens: ["chart-1", "chart-2", "chart-3", "chart-4", "chart-5"] },
+  {
+    title: "Sidebar",
+    description: "The app sidebar's own surface, text and highlight.",
+    tokens: ["sidebar", "sidebar-foreground", "sidebar-primary", "sidebar-primary-foreground", "sidebar-accent", "sidebar-accent-foreground", "sidebar-border", "sidebar-ring"],
+  },
+]
+
+function Swatch({ name, value, wide }: { name: string; value: string; wide?: boolean }) {
+  return (
+    <div className={`bg-card flex min-w-0 flex-col overflow-hidden rounded-2xl ${wide ? "sm:col-span-2" : ""}`}>
+      <div className="h-24" style={{ background: `var(--${name})` }} title={value} />
+      <div className="border-border/60 border-t px-4 py-2.5 font-mono text-[11px]">
+        <div className="truncate">{name}</div>
+        <div className="text-muted-foreground truncate">{value}</div>
+      </div>
+    </div>
+  )
+}
+
 export function ColorsView({ tokens, mode }: FoundationProps) {
   const t = normalizeTokens(tokens)
   const colors = t.colors[mode]
+  const pairs = CONTRAST_PAIRS.filter(([s, x], i) => CONTRAST_PAIRS.findIndex(([s2, x2]) => s2 === s && x2 === x) === i)
   return (
     <div className="flex flex-col gap-10">
-      {COLOR_GROUPS.map((group) => (
-        <Section key={group.id} title={group.label} description={group.description}>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {group.tokens.map(({ token, label }) => (
-              <div key={token} className="flex flex-col gap-2">
-                <div className="h-20 rounded-lg border" style={{ background: `var(--${token})` }} title={colors[token]} />
-                <div className="text-sm font-medium">{label}</div>
-                <div className="text-muted-foreground font-mono text-xs break-all">{colors[token]}</div>
+      <Section title="Foreground on background" description="Every text-on-surface pair in the system, checked against WCAG at body text size.">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          {pairs.map(([surface, text]) => {
+            const ratio = contrastRatio(colors[text], colors[surface], colors.background)
+            const level = ratio ? contrastLevel(ratio) : "Fail"
+            return (
+              <div key={`${surface}-${text}`} className="bg-card flex min-w-0 flex-col overflow-hidden rounded-2xl">
+                <div className="flex h-24 items-center justify-center text-sm font-medium" style={{ background: `var(--${surface})`, color: `var(--${text})` }}>
+                  {ratio ? ratio.toFixed(2) : "?"} · {level}
+                </div>
+                <div className="border-border/60 truncate border-t px-4 py-2.5 font-mono text-[11px]">
+                  {surface} / {text}
+                </div>
               </div>
+            )
+          })}
+        </div>
+      </Section>
+      {COLOR_SECTIONS.map((section) => (
+        <Section key={section.title} title={section.title} description={section.description}>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+            {section.tokens.map((token) => (
+              <Swatch key={token} name={token} value={colors[token]} wide={section.wide} />
             ))}
           </div>
-          {group.pairs && group.pairs.length > 0 && (
-            <div className="flex flex-wrap gap-3">
-              {group.pairs.map(([surface, text]) => {
-                const ratio = contrastRatio(colors[text], colors[surface], colors.background)
-                const level = ratio ? contrastLevel(ratio) : "Fail"
-                return (
-                  <div
-                    key={`${surface}-${text}`}
-                    className="flex items-center gap-3 rounded-lg border px-3 py-2"
-                    style={{ background: `var(--${surface})`, color: `var(--${text})` }}
-                  >
-                    <span className="text-lg font-semibold">Aa</span>
-                    <span className="text-xs">
-                      {text} on {surface}
-                    </span>
-                    <span className="rounded bg-black/70 px-1.5 py-0.5 font-mono text-[11px] text-white">
-                      {ratio ? ratio.toFixed(2) : "?"} · {level}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
         </Section>
       ))}
       {(t.customColors ?? []).length > 0 && (
-        <Section title="Custom colours" description="Your own colours. Use them as Tailwind classes, e.g. bg-success or text-warning.">
+        <Section title="Custom colours" description="Your own colours, used by name as Tailwind classes (bg-success, text-warning).">
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {t.customColors!.map((c) => (
-              <div key={c.name} className="flex flex-col gap-2">
-                <div className="h-20 rounded-lg border" style={{ background: `var(--${c.name})` }} />
-                <div className="text-sm font-medium">{c.name}</div>
-                <div className="text-muted-foreground font-mono text-xs break-all">{mode === "dark" ? c.dark : c.light}</div>
-              </div>
+              <Swatch key={c.name} name={c.name} value={mode === "dark" ? c.dark : c.light} />
             ))}
           </div>
         </Section>
@@ -220,7 +240,7 @@ export function TypographyView({ tokens }: FoundationProps) {
               ["Code", "mono", "font-mono"],
             ] as const
           ).map(([label, key, cls]) => (
-            <div key={key} className="bg-card flex min-w-0 flex-col gap-2 overflow-hidden rounded-xl border p-5">
+            <div key={key} className="bg-card flex min-w-0 flex-col gap-2 overflow-hidden rounded-2xl p-5">
               <div className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{label}</div>
               <div className={`${cls} text-4xl`}>Ag</div>
               <div className={`${cls} text-lg`}>{t.fonts[key]}</div>
@@ -239,7 +259,7 @@ export function TypographyView({ tokens }: FoundationProps) {
         </div>
       </Section>
       <Section title="Type scale" description="Every text size, each with its own line height.">
-        <div className="flex flex-col divide-y rounded-xl border">
+        <div className="bg-card divide-border/60 flex flex-col divide-y rounded-2xl">
           {TEXT_STEPS.map((s) => (
             <div key={s} className="flex items-baseline gap-6 overflow-hidden px-5 py-3">
               <div className="text-muted-foreground w-36 shrink-0 font-mono text-xs">
@@ -260,7 +280,7 @@ export function TypographyView({ tokens }: FoundationProps) {
         </div>
       </Section>
       <Section title="Letter spacing">
-        <div className="flex flex-col divide-y rounded-xl border">
+        <div className="bg-card divide-border/60 flex flex-col divide-y rounded-2xl">
           {TRACKING.map((tr) => (
             <div key={tr} className="flex items-baseline gap-6 px-5 py-3">
               <div className="text-muted-foreground w-36 shrink-0 font-mono text-xs">
@@ -457,7 +477,7 @@ export function ControlsView({ tokens }: FoundationProps) {
       <Section title="Heights" description="One height per size. Every control at that size uses it, so buttons and inputs next to each other always line up.">
         <div className="flex flex-col gap-3">
           {CONTROL_SIZES.map((size) => (
-            <div key={size} className="bg-card overflow-hidden rounded-xl border">
+            <div key={size} className="bg-card overflow-hidden rounded-2xl">
               <div className="relative flex min-h-24 flex-wrap items-center justify-center gap-3 p-5">
                 <div
                   className="border-primary/40 pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 border-y border-dashed"
@@ -678,7 +698,7 @@ export function BrandView(props: FoundationProps) {
       </Section>
       <Section title="In context" description="Where the brand actually shows up.">
         <div className="flex flex-col gap-4">
-          <div className="bg-card overflow-hidden rounded-xl border">
+          <div className="bg-card overflow-hidden rounded-2xl">
             <div className="flex items-center gap-6 border-b px-5 py-3">
               <BrandLogo {...props} />
               <nav className="text-muted-foreground flex gap-4 text-sm">
@@ -693,7 +713,7 @@ export function BrandView(props: FoundationProps) {
             </div>
             <div className="text-muted-foreground px-5 py-2 font-mono text-[11px]">Header</div>
           </div>
-          <div className="bg-muted/40 flex justify-center rounded-xl border p-8">
+          <div className="bg-card flex justify-center rounded-2xl p-8">
             <Card className="w-full max-w-sm">
               <CardHeader className="items-center text-center">
                 <div className="flex justify-center pb-2">

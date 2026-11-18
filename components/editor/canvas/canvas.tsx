@@ -4,7 +4,8 @@ import * as React from "react"
 
 import initialTokens from "@/design-system/tokens.json"
 import { ACTIVE_ADAPTER } from "@/lib/ds/adapters"
-import { BASE_PATH, type CanvasDisplay, type CanvasLayer, type CanvasToEditor, type EditorToCanvas } from "@/lib/ds/bridge"
+import classes from "@/design-system/component-classes.json"
+import { BASE_PATH, type CanvasDisplay, type CanvasLayer, type CanvasToEditor, type ComponentsFilter, type EditorToCanvas } from "@/lib/ds/bridge"
 import { googleFontUrls } from "@/lib/ds/fonts"
 import { forcedStateCss } from "@/lib/ds/force-state"
 import { setIconSettings } from "@/lib/ds/icons"
@@ -180,6 +181,7 @@ export function Canvas() {
   const [display, setDisplay] = React.useState<CanvasDisplay>("demo")
   const [previewState, setPreviewState] = React.useState<OverrideState | null>(null)
   const [interact, setInteract] = React.useState(true)
+  const [filter, setFilter] = React.useState<ComponentsFilter>({ tab: "all", q: "" })
   const [target, setTarget] = React.useState<Target | null>(null)
   const [hover, setHover] = React.useState<HTMLElement | null>(null)
   const interactRef = React.useRef(interact)
@@ -209,6 +211,7 @@ export function Canvas() {
         setDisplay(msg.display)
         setPreviewState(msg.state)
         setInteract(msg.interact)
+        if (msg.filter) setFilter(msg.filter)
       } else if (msg.type === "ds:select") {
         setTarget(msg.slot ? { slot: msg.slot, variant: msg.variant, size: msg.size, auto: msg.auto } : null)
       }
@@ -325,7 +328,7 @@ export function Canvas() {
         {canvas.overview.render()}
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 pb-16 md:px-10">
           <Section title="Menus" description="Menu colour and the highlighted item follow the Style settings.">
-            <div className="bg-muted/40 flex justify-center rounded-xl border p-10">
+            <div className="bg-card flex justify-center rounded-2xl p-10">
               <MenuPreview />
             </div>
           </Section>
@@ -341,40 +344,63 @@ export function Canvas() {
       </Page>
     )
   } else if (view === "components") {
+    const edited = (id: string) => {
+      const parts = Object.keys((classes as ClassesJson)[id]?.slots ?? {})
+      return (tokens.overrides ?? []).some((o) => o.component === id || parts.includes(o.slot))
+    }
+    const hasVariants = (id: string, d: (typeof canvas.demos)[number]) => !!d.matrix || Object.keys((classes as ClassesJson)[id]?.cva ?? {}).length > 0
+    const q = filter.q.trim().toLowerCase()
+    const list = canvas.demos.filter(
+      (d) =>
+        (!q || d.name.toLowerCase().includes(q)) &&
+        (filter.tab === "all" ||
+          (filter.tab === "edited" && edited(d.id)) ||
+          (filter.tab === "variants" && hasVariants(d.id, d)) ||
+          (filter.tab === "custom" && canvas.customIds.includes(d.id)))
+    )
     body = (
-      <Page title="All components" description={`${canvas.demos.length} components. Click one to open it.`}>
-        <div className="grid gap-6 lg:grid-cols-2">
-          {canvas.demos.map((demo) => (
-            <div
-              key={demo.id}
-              role="link"
-              tabIndex={0}
-              onClick={() => post({ type: "ds:navigate", view: `component:${demo.id}` })}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") post({ type: "ds:navigate", view: `component:${demo.id}` })
-              }}
-              className="bg-card hover:ring-primary/40 flex min-w-0 cursor-pointer flex-col gap-4 overflow-hidden rounded-xl border p-5 text-left transition hover:ring-2"
-            >
-              <div>
-                <div className="flex items-center gap-2 font-medium">
-                  {demo.name}
-                  {canvas.customIds.includes(demo.id) && (
-                    <span className="bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 text-xs font-normal">Custom</span>
-                  )}
+      <Page title="All components" description="Every component this system ships, with the ones you've changed marked. Click one to open it." header>
+        {list.length === 0 ? (
+          <p className="text-muted-foreground text-sm">No components match.</p>
+        ) : (
+          <div className="grid gap-6 lg:grid-cols-2">
+            {list.map((demo) => (
+              <div
+                key={demo.id}
+                role="link"
+                tabIndex={0}
+                onClick={() => post({ type: "ds:navigate", view: `component:${demo.id}` })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") post({ type: "ds:navigate", view: `component:${demo.id}` })
+                }}
+                className="bg-card hover:ring-primary/40 flex min-w-0 cursor-pointer flex-col gap-4 overflow-hidden rounded-2xl p-5 text-left transition hover:ring-2"
+              >
+                <div>
+                  <div className="flex items-center gap-2 font-medium">
+                    {demo.name}
+                    {canvas.customIds.includes(demo.id) && (
+                      <span className="bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 text-xs font-normal">Custom</span>
+                    )}
+                    {edited(demo.id) && (
+                      <span className="text-muted-foreground ml-auto flex items-center gap-1.5 text-xs font-normal">
+                        <span className="bg-foreground size-1.5 rounded-full" /> Edited
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-muted-foreground text-sm">{demo.description}</div>
                 </div>
-                <div className="text-muted-foreground text-sm">{demo.description}</div>
+                <div className="pointer-events-none flex min-h-24 items-center justify-center">
+                  <DemoBoundary resetKey={demo.id}>{demo.examples[0].render()}</DemoBoundary>
+                </div>
               </div>
-              <div className="pointer-events-none flex min-h-24 items-center justify-center">
-                <DemoBoundary resetKey={demo.id}>{demo.examples[0].render()}</DemoBoundary>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Page>
     )
   } else if (view === "blocks") {
     body = (
-      <Page title="Blocks" description={`${canvas.blocks.length} ready-made sections built from your components. Click one to open it.`}>
+      <Page title="Blocks" description="Ready-made sections built only from your components and tokens, so they follow every change. Click one to open it." header>
         <div className="flex flex-col gap-12">
           {BLOCK_CATEGORIES.map((category) => {
             const list = canvas.blocks.filter((b) => b.category === category)
@@ -391,7 +417,7 @@ export function Canvas() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") post({ type: "ds:navigate", view: `block:${block.id}` })
                     }}
-                    className="hover:ring-primary/40 flex cursor-pointer flex-col overflow-hidden rounded-xl border transition hover:ring-2"
+                    className="bg-card hover:ring-primary/40 flex cursor-pointer flex-col overflow-hidden rounded-2xl transition hover:ring-2"
                   >
                     <div className="bg-card flex items-baseline justify-between gap-4 border-b px-5 py-3">
                       <span className="font-medium">{block.name}</span>
@@ -437,7 +463,7 @@ export function Canvas() {
                   <tr key={r}>
                     <th className="text-muted-foreground pr-3 text-right font-mono text-xs font-normal">{r}</th>
                     {colValues.map((c) => (
-                      <td key={c} className="bg-card rounded-xl border p-4 text-center align-middle">
+                      <td key={c} className="bg-card rounded-xl p-4 text-center align-middle">
                         <div className="flex items-center justify-center">{render({ [rows.prop]: r, ...(cols ? { [cols.prop]: c } : {}) })}</div>
                       </td>
                     ))}
@@ -455,7 +481,7 @@ export function Canvas() {
             {demo.examples.map((ex) => (
               <section key={ex.name} className="flex flex-col gap-3">
                 <h2 className="text-muted-foreground text-sm font-medium">{ex.name}</h2>
-                <div className="bg-card flex min-h-40 items-center justify-center rounded-xl border p-10">
+                <div className="bg-card flex min-h-40 items-center justify-center rounded-2xl p-8 md:p-10">
                   <DemoBoundary resetKey={`${view}:${ex.name}`}>{ex.render()}</DemoBoundary>
                 </div>
               </section>
@@ -467,7 +493,7 @@ export function Canvas() {
   }
 
   return (
-    <div className="bg-background min-h-screen">
+    <div className="bg-muted min-h-screen">
       <DemoBoundary resetKey={`${view}:${display}`}>{body}</DemoBoundary>
       {!interact && <Highlights target={target?.auto ? null : target} hover={hover} />}
       {interact && target && !target.auto && <Highlights target={target} hover={null} />}
@@ -475,16 +501,21 @@ export function Canvas() {
   )
 }
 
-function Page({ title, description, children }: { title: string; description?: string; children?: React.ReactNode }) {
+/** A canvas page. The page name lives in the editor's toolbar; `header` adds a short intro (All components, Blocks). */
+function Page({ title, description, header, children }: { title: string; description?: string; header?: boolean; children?: React.ReactNode }) {
   return (
     <div className="p-6 md:p-10">
       <div className="mx-auto flex max-w-5xl flex-col gap-8">
-        <div>
-          <h1 className="font-heading text-3xl font-semibold tracking-tight">{title}</h1>
-          {description && <p className="text-muted-foreground mt-1">{description}</p>}
-        </div>
+        {header && (
+          <div>
+            <h1 className="text-base font-semibold">{title}</h1>
+            {description && <p className="text-muted-foreground max-w-md text-sm">{description}</p>}
+          </div>
+        )}
         {children}
       </div>
     </div>
   )
 }
+
+type ClassesJson = Record<string, { slots?: Record<string, string[]>; cva?: Record<string, unknown> }>

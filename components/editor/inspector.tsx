@@ -6,6 +6,8 @@ import { ADAPTERS } from "@/lib/ds/adapters"
 import { BASE_COLORS, applyBaseColor } from "@/lib/ds/base-colors"
 import { contrastLevel, contrastRatio, formatOklch, getAlpha, hexToRgb, parseColor, rgbToOklch, toHex, withAlpha, withHex } from "@/lib/ds/color"
 import { FONT_OPTIONS, type FontCategory } from "@/lib/ds/fonts"
+import { applyPreset, presetFontName, readPreset } from "@/lib/ds/presets"
+import { applyStyle, BUILT_IN_STYLES, deleteStyle, findStyle, isBuiltInStyle, renameStyle, saveStyle, styleIsModified } from "@/lib/ds/styles"
 import {
   Alert02Icon,
   ArrowRight01Icon,
@@ -38,6 +40,7 @@ import {
   type LintLevel,
   type Mode,
   type ShadowLevel,
+  type MenuColor,
 } from "@/lib/ds/types"
 
 import { ChromeButton, cx, FieldRow, Icons, PanelSection, RangeInput, Segmented, SelectInput, TextInput } from "./chrome"
@@ -388,7 +391,7 @@ export function ColorsPanel(props: InspectorProps) {
             disabled={!base}
             onClick={() => {
               const next = applyBaseColor(tokens, base as keyof typeof BASE_COLORS)
-              props.updateMany(Object.entries(next).map(([p, v]) => [p, v]))
+              props.updateMany([...Object.entries(next).map(([p, v]) => [p, v] as [string, unknown]), ["baseColor", base]])
             }}
           >
             Apply
@@ -949,30 +952,89 @@ export function BrandPanel(props: InspectorProps & { onAsset: (path: string, ass
 /* Style (menus)                                                       */
 /* ------------------------------------------------------------------ */
 
-export function StylePanel(props: InspectorProps & { onImport: () => void }) {
+const MENU_COLORS: { value: MenuColor; label: string }[] = [
+  { value: "default", label: "Default" },
+  { value: "inverted", label: "Inverted" },
+  { value: "default-translucent", label: "Default translucent" },
+  { value: "inverted-translucent", label: "Inverted translucent" },
+]
+
+export function StylePanel(
+  props: InspectorProps & {
+    onImport: () => void
+    /** Replace the tokens as one undo step, with a message for the toast */
+    onApply: (next: DesignTokens, message: string) => void
+  }
+) {
   const t = normalizeTokens(props.tokens)
+  const active = findStyle(t, t.style)
+  const modified = styleIsModified(t)
+  const custom = t.customStyles ?? []
+  const activeIsCustom = !!active && !isBuiltInStyle(active.id)
+  const lockedParts = props.isLocked("overrides") || props.isLocked("controls")
+
+  const [saving, setSaving] = React.useState(false)
+  const [name, setName] = React.useState("")
+  const [desc, setDesc] = React.useState("")
+  const [renaming, setRenaming] = React.useState<string | null>(null)
+  const [renameTo, setRenameTo] = React.useState("")
+  const [confirmDelete, setConfirmDelete] = React.useState<string | null>(null)
+  const [code, setCode] = React.useState("")
+  const preset = readPreset(code)
+
+  const applyCode = () => {
+    if (!preset) return
+    const res = applyPreset(props.tokens, preset)
+    props.onApply(res.tokens, `Preset ${code.trim()}: ${res.applied.join(", ")}.${res.skipped.length ? ` Kept ${res.skipped.join(", ")}.` : ""} Undo with ⌘Z.`)
+    setCode("")
+  }
+
+  const pick = (id: string) => {
+    const def = findStyle(t, id)
+    if (!def) return
+    const res = applyStyle(props.tokens, id)
+    props.onApply(res.tokens, `Style: ${def.name}.${res.skipped.length ? ` Kept ${res.skipped.join(", ")}.` : ""} Undo with ⌘Z.`)
+  }
+
   return (
     <>
       <PanelSection title="Base style">
-        <div className="flex items-center justify-between text-[12px]">
-          <span className="text-zinc-600">Style</span>
-          <span className="font-medium text-zinc-900">Vega</span>
-        </div>
-        <p className="text-[11px] text-zinc-500">The component set this system was installed with (from DS Manager).</p>
-      </PanelSection>
-      <PanelSection title="Menus" action={<LockButton path="menu" isLocked={props.isLocked} toggleLock={props.toggleLock} />}>
-        <FieldRow group label="Menu">
-          <Segmented
-            value={t.menu!.color}
-            onChange={(v) => !props.isLocked("menu") && props.update("menu.color", v)}
-            className="w-full [&>button]:flex-1"
-            options={[
-              { value: "default", label: "Default" },
-              { value: "inverted", label: "Inverted" },
-            ]}
-          />
+        <FieldRow label="Style">
+          <SelectInput value={active?.id ?? ""} onChange={(e) => pick(e.target.value)} aria-label="Style">
+            {!active && <option value="">Custom</option>}
+            <optgroup label="shadcn/ui styles">
+              {BUILT_IN_STYLES.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </optgroup>
+            {custom.length > 0 && (
+              <optgroup label="Your styles">
+                {custom.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </SelectInput>
         </FieldRow>
-        <FieldRow group label="Highlighted item">
+        <p className="text-[11px] text-zinc-500">
+          {active?.description}
+          {modified && <span className="text-amber-700"> · Changed since it was applied</span>}
+        </p>
+        {lockedParts && <p className="text-[11px] text-zinc-500">Some of this style is locked (component changes or control heights), so switching keeps those.</p>}
+        <FieldRow label="Menu">
+          <SelectInput value={t.menu!.color} disabled={props.isLocked("menu")} onChange={(e) => props.update("menu.color", e.target.value as MenuColor)} aria-label="Menu">
+            {MENU_COLORS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </SelectInput>
+        </FieldRow>
+        <FieldRow group label="Menu item">
           <Segmented
             value={t.menu!.accent}
             onChange={(v) => !props.isLocked("menu") && props.update("menu.accent", v)}
@@ -983,13 +1045,149 @@ export function StylePanel(props: InspectorProps & { onImport: () => void }) {
             ]}
           />
         </FieldRow>
-        <p className="text-[11px] text-zinc-500">Applies to dropdown, context, menubar, select and combobox menus.</p>
       </PanelSection>
+
+      <PanelSection title="Your styles">
+        {custom.length === 0 && !saving && (
+          <p className="text-[11px] text-zinc-500">
+            Save the current look (control heights and every component change) as a style you can switch back to. Styles are saved in tokens.json
+            with the rest of the system.
+          </p>
+        )}
+        {custom.map((s) => (
+          <div key={s.id} className={cx("flex flex-col gap-1.5 rounded-[6px] border px-2.5 py-2", s.id === active?.id ? "border-blue-500 bg-blue-50/50" : "border-zinc-200")}>
+            {renaming === s.id ? (
+              <div className="flex gap-1.5">
+                <TextInput autoFocus value={renameTo} onChange={(e) => setRenameTo(e.target.value)} aria-label="Style name" className="h-7" />
+                <ChromeButton
+                  size="sm"
+                  variant="primary"
+                  disabled={!renameTo.trim()}
+                  onClick={() => {
+                    props.onApply(renameStyle(props.tokens, s.id, renameTo), `Renamed the style to ${renameTo.trim()}.`)
+                    setRenaming(null)
+                  }}
+                >
+                  Save
+                </ChromeButton>
+                <ChromeButton size="sm" onClick={() => setRenaming(null)}>
+                  Cancel
+                </ChromeButton>
+              </div>
+            ) : (
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-[12px] font-medium text-zinc-900">{s.name}</div>
+                  <div className="truncate text-[11px] text-zinc-500">{s.description}</div>
+                </div>
+                {s.id === active?.id ? (
+                  <span className="shrink-0 text-[11px] text-blue-700">Active</span>
+                ) : (
+                  <ChromeButton size="sm" onClick={() => pick(s.id)}>
+                    Apply
+                  </ChromeButton>
+                )}
+              </div>
+            )}
+            {renaming !== s.id && (
+              <div className="flex gap-3 text-[11px]">
+                {s.id === active?.id && modified && (
+                  <button type="button" className="text-blue-700 underline" onClick={() => props.onApply(saveStyle(props.tokens, s.name, s.description, s.id), `Updated ${s.name} with the current look.`)}>
+                    Update from current
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="text-zinc-600 underline"
+                  onClick={() => {
+                    setRenaming(s.id)
+                    setRenameTo(s.name)
+                  }}
+                >
+                  Rename
+                </button>
+                {confirmDelete === s.id ? (
+                  <button
+                    type="button"
+                    className="font-medium text-red-700 underline"
+                    onClick={() => {
+                      props.onApply(deleteStyle(props.tokens, s.id), `Deleted ${s.name}. Undo with ⌘Z.`)
+                      setConfirmDelete(null)
+                    }}
+                  >
+                    Delete {s.name}?
+                  </button>
+                ) : (
+                  <button type="button" className="text-zinc-600 underline" onClick={() => setConfirmDelete(s.id)}>
+                    Delete
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+        {saving ? (
+          <div className="flex flex-col gap-2 rounded-[6px] border border-zinc-200 p-2.5">
+            <FieldRow label="Name">
+              <TextInput autoFocus placeholder="Compact clinic" value={name} onChange={(e) => setName(e.target.value)} />
+            </FieldRow>
+            <FieldRow label="Description">
+              <TextInput placeholder="What it's for" value={desc} onChange={(e) => setDesc(e.target.value)} />
+            </FieldRow>
+            <div className="flex justify-end gap-2">
+              <ChromeButton size="sm" onClick={() => setSaving(false)}>
+                Cancel
+              </ChromeButton>
+              <ChromeButton
+                size="sm"
+                variant="primary"
+                disabled={!name.trim() || props.isLocked("overrides")}
+                onClick={() => {
+                  props.onApply(saveStyle(props.tokens, name, desc), `Saved the style ${name.trim()}.`)
+                  setSaving(false)
+                  setName("")
+                  setDesc("")
+                }}
+              >
+                Save style
+              </ChromeButton>
+            </div>
+          </div>
+        ) : (
+          <ChromeButton onClick={() => setSaving(true)} disabled={props.isLocked("overrides")}>
+            <Icons.plus /> Save current as new style
+          </ChromeButton>
+        )}
+        {activeIsCustom && !modified && <p className="text-[11px] text-zinc-500">Change components or control heights, then update the style here.</p>}
+      </PanelSection>
+
       <PanelSection title="Import preset">
-        <p className="text-[11px] text-zinc-500">Paste theme CSS from DS Manager, tweakcn or ui.shadcn.com/themes.</p>
-        <ChromeButton onClick={props.onImport}>
-          <Icons.upload /> Import CSS…
-        </ChromeButton>
+        <FieldRow label="Preset code" hint="Paste a code from ui.shadcn.com/create. It sets the style, colours, fonts, radius, icons and menus; locked values are kept.">
+          <div className="flex gap-2">
+            <TextInput
+              placeholder="b8"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              aria-label="Preset code"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") applyCode()
+              }}
+            />
+            <ChromeButton variant="primary" disabled={!preset} onClick={applyCode}>
+              Apply
+            </ChromeButton>
+          </div>
+        </FieldRow>
+        {code.trim() && (
+          <p className={cx("text-[11px]", preset ? "text-zinc-600" : "text-red-700")}>
+            {preset
+              ? `${preset.style} · ${preset.baseColor}${preset.theme !== preset.baseColor ? ` + ${preset.theme}` : ""} · ${presetFontName(preset.font)} · radius ${preset.radius} · ${preset.iconLibrary} · ${preset.menuColor} menu`
+              : "That isn't a preset code."}
+          </p>
+        )}
+        <button type="button" onClick={props.onImport} className="self-start text-[11px] text-zinc-600 underline">
+          Or import theme CSS…
+        </button>
       </PanelSection>
     </>
   )
@@ -1051,8 +1249,33 @@ export function LintPanel(props: InspectorProps) {
 /* System overview                                                     */
 /* ------------------------------------------------------------------ */
 
-export function SystemPanel(props: InspectorProps & { onNavigate: (view: string) => void }) {
-  const { tokens, mode } = props
+function SummaryRow({ label, value, onClick }: { label: string; value: React.ReactNode; onClick?: () => void }) {
+  const body = (
+    <>
+      <span className="text-zinc-600">{label}</span>
+      <span className="truncate font-medium text-zinc-900">{value}</span>
+    </>
+  )
+  return onClick ? (
+    <button type="button" onClick={onClick} className="-mx-2 flex items-center justify-between gap-3 rounded-[6px] px-2 py-1 text-left text-[12px] hover:bg-zinc-50">
+      {body}
+    </button>
+  ) : (
+    <div className="flex items-center justify-between gap-3 py-1 text-[12px]">{body}</div>
+  )
+}
+
+export function SystemPanel(
+  props: InspectorProps & {
+    onNavigate: (view: string) => void
+    /** Changed token paths since the last save */
+    changes: { path: string }[]
+    dirty: boolean
+    onExport: () => void
+    onDiscard: () => void
+  }
+) {
+  const { tokens } = props
   const t = normalizeTokens(tokens)
   const failsBy = (m: Mode) =>
     CONTRAST_PAIRS.filter(([s, tt]) => {
@@ -1060,67 +1283,79 @@ export function SystemPanel(props: InspectorProps & { onNavigate: (view: string)
       const r = contrastRatio(c[tt], c[s], c.background)
       return r != null && r < 4.5
     }).length
-  const locks = t.locks ?? []
+  const style = findStyle(t, t.style)
+  const count = (test: (path: string) => boolean) => props.changes.filter((c) => test(c.path)).length
+  const light = count((p) => p.startsWith("colors.light."))
+  const dark = count((p) => p.startsWith("colors.dark."))
+  const custom = count((p) => p.startsWith("customColors") || p.startsWith("customStyles"))
+  const theme = props.changes.length - light - dark - custom
+  const slug = t.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 
   return (
     <>
-      <PanelSection title="System">
+      <PanelSection title="Identity">
         <FieldRow label="Name">
           <CommitInput value={tokens.name} aria-label="System name" validate={(v) => v.length > 0} onCommit={(v) => props.update("name", v)} />
         </FieldRow>
+        <SummaryRow label="Slug" value={<span className="font-mono text-[11px]">{slug || "—"}</span>} />
         <FieldRow label="Description">
           <CommitInput value={tokens.description ?? ""} aria-label="System description" onCommit={(v) => props.update("description", v)} />
         </FieldRow>
       </PanelSection>
 
-      <PanelSection title="Quick edits">
-        <ModeTabs mode={mode} setMode={props.setMode} />
-        <ColorRow token="primary" label="Primary" props={props} />
-        <ColorRow token="primary-foreground" label="Primary text" props={props} />
-        <FieldRow label={`Radius · ${tokens.radius}rem`}>
-          <RangeInput min={0} max={1.5} step={0.025} value={tokens.radius} disabled={props.isLocked("radius")} onChange={(e) => props.update("radius", Number(e.target.value), "radius")} />
-        </FieldRow>
-        <p className="text-[11px] text-zinc-500">Click any part of the canvas to edit that component.</p>
+      <PanelSection title="Foundation">
+        <div className="flex flex-col">
+          <SummaryRow label="Style" value={`${style?.name ?? "Custom"}${styleIsModified(t) ? " (changed)" : ""}`} onClick={() => props.onNavigate("style")} />
+          <SummaryRow label="Base color" value={t.baseColor ?? "Custom"} onClick={() => props.onNavigate("foundation:colors")} />
+          <SummaryRow label="Accent" value={t.accent ?? "none"} onClick={() => props.onNavigate("foundation:colors")} />
+          <SummaryRow label="Icons" value={ICON_LIBRARIES.find((l) => l.id === t.icons!.library)?.name ?? t.icons!.library} onClick={() => props.onNavigate("foundation:icons")} />
+          <SummaryRow label="Body font" value={t.fonts.sans} onClick={() => props.onNavigate("foundation:typography")} />
+          <SummaryRow label="Radius" value={`${t.radius}rem`} onClick={() => props.onNavigate("foundation:radius")} />
+        </div>
+      </PanelSection>
+
+      <PanelSection title="Changes">
+        <div className="flex flex-col">
+          <SummaryRow label="Light tokens" value={light} />
+          <SummaryRow label="Dark tokens" value={dark} />
+          <SummaryRow label="Theme values" value={theme} />
+          <SummaryRow label="Custom tokens" value={custom} />
+        </div>
+        <p className="text-[11px] text-zinc-500">Since the last save to GitHub.</p>
       </PanelSection>
 
       <PanelSection title="Health">
-        <div className="flex flex-col gap-1.5 text-[12px]">
+        <div className="flex flex-col">
           {(["light", "dark"] as Mode[]).map((m) => {
             const n = failsBy(m)
             return (
-              <button
+              <SummaryRow
                 key={m}
-                type="button"
+                label={`${m === "light" ? "Light" : "Dark"} mode contrast`}
+                value={n === 0 ? <span className="text-emerald-700">All pass</span> : <span className="text-amber-700">{n} below 4.5:1</span>}
                 onClick={() => {
                   props.setMode(m)
                   props.onNavigate("foundation:colors")
                 }}
-                className="flex items-center justify-between rounded-[6px] px-2 py-1.5 text-left hover:bg-zinc-50"
-              >
-                <span className="text-zinc-700">{m === "light" ? "Light" : "Dark"} mode contrast</span>
-                {n === 0 ? <span className="text-emerald-700">All pass</span> : <span className="text-amber-700">{n} below 4.5:1</span>}
-              </button>
+              />
             )
           })}
-          <button type="button" onClick={() => props.onNavigate("lint")} className="flex items-center justify-between rounded-[6px] px-2 py-1.5 text-left hover:bg-zinc-50">
-            <span className="text-zinc-700">Locked values</span>
-            <span className="text-zinc-500">{locks.length}</span>
-          </button>
-          <div className="flex items-center justify-between px-2 py-1.5">
-            <span className="text-zinc-700">Component changes</span>
-            <span className="text-zinc-500">{t.overrides?.length ?? 0}</span>
-          </div>
+          <SummaryRow label="Locked values" value={(t.locks ?? []).length} onClick={() => props.onNavigate("lint")} />
         </div>
       </PanelSection>
 
-      <PanelSection title="Libraries">
-        {ADAPTERS.map((a) => (
-          <div key={a.id} className="flex flex-col gap-0.5 rounded-[6px] border border-zinc-200 px-3 py-2">
-            <span className="text-[12px] font-medium text-zinc-900">{a.name}</span>
-            <span className="text-[11px] text-zinc-500">{a.description}</span>
-          </div>
-        ))}
-        <p className="text-[11px] text-zinc-500">Tokens are stored library-neutral in design-system/tokens.json. Each library adapter writes its own theme file.</p>
+      <PanelSection title="Actions">
+        <div className="flex flex-col gap-1.5">
+          <ChromeButton onClick={props.onExport}>
+            <Icons.download /> Get code
+          </ChromeButton>
+          <ChromeButton disabled={!props.dirty} onClick={props.onDiscard}>
+            <Icons.reset /> Discard unsaved changes
+          </ChromeButton>
+        </div>
+        <p className="text-[11px] text-zinc-500">
+          Tokens are library-neutral in design-system/tokens.json; {ADAPTERS.map((a) => a.name).join(", ")} output is generated from them.
+        </p>
       </PanelSection>
     </>
   )

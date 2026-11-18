@@ -36,24 +36,26 @@ design-system/tokens.json   ← source of truth (library-neutral tokens)
 ## Using the editor
 
 1. Open the [editor](https://chrisinghamdesign.github.io/medical-design-system/editor/).
-2. Pick a page in the sidebar and edit in the inspector on the right. Light/dark and desktop/tablet/mobile toggles are in the top bar.
-   - **Overview**: the showcase screen. Click any part to edit that component in place.
-   - **Style**: menu colour and highlight, base style, import a preset.
-   - **All components**: a card per component (custom ones are tagged); click one to open it.
+2. The layout follows DS Manager. The sidebar lists Overview, Style, Color, Typography, Radius, Shadow, Spacing, Controls, Icons, Brand, Blocks and Lint, then **Custom components** and **Default Components** (All components and each component), with **Component Layers** at the bottom. The top bar has the system menu (Get code, Import theme CSS, Discard unsaved changes, View the app, the repo), undo/redo, comments, Share, Get code and Save. Light/dark, desktop/tablet/mobile and zoom are in the canvas toolbar, next to a short summary of the page.
+   - **Overview**: a gallery of app screens built from the components. Click any part to edit that component in place.
+   - **Style**: pick a base style (Vega, Nova, Maia, Lyra, Mira, Luma, Sera, Rhea, or one of yours), the menu colour (default, inverted, or translucent versions) and the highlighted menu item. **Save current as new style** keeps the current control heights and component changes as a named style you can switch back to, update, rename or delete; styles are saved in tokens.json. **Import preset** applies a code from ui.shadcn.com/create (style, base colour, accent, chart colours, fonts, radius, icon library, menus); locked values are kept.
+   - **Color**, **Typography**, **Radius**, **Shadow**, **Spacing**, **Controls**, **Icons** (HugeIcons, Lucide, Tabler or Phosphor), **Brand**: each with Docs and Preview.
    - **Blocks**: ready-made sections (marketing, application, forms) built from your components, so they follow every change. Open one to see it alone at desktop, tablet or phone width, select its parts to restyle them, and copy its code from the inspector.
-   - **Lint**: check the code on GitHub against the design system rules, set how strict they are, and manage locks.
-   - **Foundations**: Colors (base colour presets, custom colours, contrast checks), Typography (fonts, sizes, line heights, weights, letter spacing), Radius (base and each step), Shadows, Spacing, Controls (heights and focus), Icons (library: HugeIcons, Lucide, Tabler or Phosphor; stroke), Brand (logo, mark, favicon as SVG). Each has Docs and Preview.
+   - **Lint**: check the code on GitHub against the design system rules and manage locks.
    - **Custom components**: your own components from `components/custom/`, edited like the library's. **+** creates a starter component and commits it (it appears after the ~2 minute rebuild).
-   - **Components**: examples of every variant, a Matrix of variant × size for the main ones, and Layers. Use **Select** to click a part, then change its layout, type, colours, border, radius, shadow and more for all variants or one variant, size and state (hover, focus, pressed, disabled, open). The **State** menu above the canvas shows every component as hovered, focused, pressed, disabled or open (their own state styles plus yours). **Interact** lets you use the components normally. **Utilities** shows the classes the part ships with and the CSS your change generates.
-3. The right-hand panel has three tabs:
-   - **Inspect**: the settings for the page or part you're on.
+   - **All components**: a card per component, filtered by All, Edited, With variants or Custom, with search.
+   - **Component pages**: examples of every variant, a Matrix of variant × size for the main ones, and Layers. Use **Select** to click a part, then change its layout, type, colours, border, radius, shadow and more for all variants or one variant, size and state. The **State** menu shows every component as hovered, focused, pressed, disabled or open (their own state styles plus yours). **Interact** lets you use the components normally.
+3. The right-hand panel has four tabs, plus comments:
+   - **Style**: the settings for the page or part you're on (the system summary when nothing is selected).
    - **Agent**: ask Claude to make changes in plain words ("make the primary a calm teal and keep contrast passing"). It uses your own Anthropic API key (stored only in your browser), edits the same tokens and component styles as the inspector, respects locks, and each change is one ⌘Z. It can't edit code.
-   - **Comments**: comments on the current page or a selected part, stored as GitHub issues labelled `design-comment`. Anyone can read them; posting needs a token with **Issues: Read and write**.
+   - **Utilities**: the Tailwind classes the selected part ships with and the CSS your changes generate.
+   - **Lint**: how strict the design system lint rules are.
+   - **Comments** (speech bubble in the top bar): comments on the current page or a selected part, stored as GitHub issues labelled `design-comment`. Anyone can read them; posting needs a token with **Issues: Read and write**.
 4. **Share** copies a link with your current draft inside it (nothing is uploaded). Whoever opens it gets that draft in their editor, ready to keep or discard.
 5. Click **Save**. The first time, it walks you through creating a GitHub token (fine-grained, this repo only, Contents: Read and write, plus Issues: Read and write for comments). The token stays in your browser.
 6. Saving commits `tokens.json`, every adapter's output and any uploaded brand files in one commit. The site redeploys in about 2 minutes.
 
-Unsaved edits (including uploaded files) are kept in your browser if you close the tab. **Export** copies or downloads `theme.css` / `tokens.json`, and **Import CSS** pastes in a shadcn theme from anywhere (DS Manager's Get CSS, tweakcn, ui.shadcn.com/themes).
+Unsaved edits (including uploaded files) are kept in your browser if you close the tab. **Get code** copies or downloads `theme.css` / `tokens.json`, and **Import theme CSS** pastes in a shadcn theme from anywhere (DS Manager's Get CSS, tweakcn, ui.shadcn.com/themes).
 
 The lock icon next to any value, or a whole-area lock on the Lint page, stops it being edited or imported over, and AI tools are told to leave locked values alone (see `AGENTS.md`).
 

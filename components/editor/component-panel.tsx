@@ -202,7 +202,10 @@ export function ComponentPanel({
   tokens,
   update,
   locked,
+  tab: tabProp,
 }: {
+  /** Show only this tab (the editor's right-panel tabs pick it); omit for the in-panel switch */
+  tab?: "style" | "utilities"
   componentId: string
   componentName: string
   layers: CanvasLayer[]
@@ -214,7 +217,8 @@ export function ComponentPanel({
   update: (path: string, value: unknown, key?: string) => void
   locked: boolean
 }) {
-  const [tab, setTab] = React.useState<"style" | "utilities">("style")
+  const [tabState, setTab] = React.useState<"style" | "utilities">("style")
+  const tab = tabProp ?? tabState
   const t = normalizeTokens(tokens)
   const overrides = t.overrides ?? []
   const ownSlots = Object.keys(COMPONENT_CLASSES[componentId]?.slots ?? {})
@@ -324,15 +328,17 @@ export function ComponentPanel({
           {scope.size ? ` · ${scope.size}` : ""}
           {scope.state ? ` when ${STATE_WORDS[scope.state]}` : ""}, everywhere it&apos;s used.
         </p>
-        <Segmented
-          value={tab}
-          onChange={setTab}
-          className="w-full [&>button]:flex-1"
-          options={[
-            { value: "style", label: "Style" },
-            { value: "utilities", label: "Utilities" },
-          ]}
-        />
+        {!tabProp && (
+          <Segmented
+            value={tab}
+            onChange={setTab}
+            className="w-full [&>button]:flex-1"
+            options={[
+              { value: "style", label: "Style" },
+              { value: "utilities", label: "Utilities" },
+            ]}
+          />
+        )}
       </PanelSection>
 
       {tab === "style" ? (

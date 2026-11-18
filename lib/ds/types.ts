@@ -120,6 +120,19 @@ export interface ComponentOverride {
   state?: OverrideState
   /** CSS property (kebab-case) → value */
   props: Record<string, string>
+  /** Set when the change comes from a style (Style page); switching style replaces these */
+  style?: string
+}
+
+export type MenuColor = "default" | "inverted" | "default-translucent" | "inverted-translucent"
+
+/** A named look: control heights plus component changes (see lib/ds/styles.ts) */
+export interface StyleDefinition {
+  id: string
+  name: string
+  description: string
+  heights: Record<ControlSize, number>
+  overrides: Omit<ComponentOverride, "style">[]
 }
 
 export interface CustomColor {
@@ -172,7 +185,15 @@ export interface DesignTokens {
   }
   icons?: { library: IconLibraryId; strokeWidth: number }
   brand?: BrandTokens
-  menu?: { color: "default" | "inverted"; accent: "subtle" | "bold" }
+  menu?: { color: MenuColor; accent: "subtle" | "bold" }
+  /** Active style id (built-in like "vega", or one of customStyles) */
+  style?: string
+  /** Styles made in the editor (Style page → Save as new style) */
+  customStyles?: StyleDefinition[]
+  /** Base colour palette the colours started from (e.g. "zinc"), when known */
+  baseColor?: string
+  /** Accent theme applied on top of the base colour (e.g. "blue"), when known */
+  accent?: string
   /** Per-component style changes */
   overrides?: ComponentOverride[]
   lint?: { rules: Record<LintRuleId, LintLevel> }
@@ -266,6 +287,8 @@ export function normalizeTokens(t: DesignTokens): DesignTokens {
       ...t.brand,
     },
     menu: { color: "default", accent: "subtle", ...t.menu },
+    style: t.style ?? "vega",
+    customStyles: t.customStyles ?? [],
     overrides: t.overrides ?? [],
     lint: { rules: { ...DEFAULT_LINT.rules, ...t.lint?.rules } },
     locks: t.locks ?? [],

@@ -5,13 +5,15 @@ import * as React from "react"
 import initialTokens from "@/design-system/tokens.json"
 import { ACTIVE_ADAPTER, ADAPTERS } from "@/lib/ds/adapters"
 import { importShadcnCss } from "@/lib/ds/adapters/shadcn"
-import { BASE_PATH, type CanvasDisplay, type CanvasLayer, type CanvasToEditor, type EditorToCanvas } from "@/lib/ds/bridge"
+import { BASE_PATH, type CanvasDisplay, type CanvasLayer, type CanvasToEditor, type ComponentsFilter, type EditorToCanvas } from "@/lib/ds/bridge"
 import { COMPONENT_CLASSES, SLOT_COMPONENT } from "@/lib/ds/classes"
 import { commitFiles, DEFAULT_REPO, readRepoFile, verifyToken, type RepoConfig } from "@/lib/ds/github"
 import type { AgentContext } from "@/lib/ds/agent"
+import { ICON_LIBRARIES } from "@/lib/ds/icons"
+import { findStyle, styleIsModified } from "@/lib/ds/styles"
 import { decodeShare, SHARE_PREFIX } from "@/lib/ds/share"
 import { cloneTokens, getPath, isPathLocked, sameTokens, setPath, storage, useTokenHistory } from "@/lib/ds/store"
-import type { DesignTokens, Mode, OverrideState } from "@/lib/ds/types"
+import { COLOR_TOKENS, normalizeTokens, type DesignTokens, type Mode, type OverrideState } from "@/lib/ds/types"
 
 import { AgentPanel } from "./agent-panel"
 import { CANVASES, FOUNDATIONS } from "./canvas/registry"
@@ -72,12 +74,104 @@ function NavItem({ id, label, icon: Icon, active, onSelect, badge }: { id: strin
   )
 }
 
+/** A collapsible sidebar section ("Custom components", "Default Components") */
+function NavGroup({ title, open, onToggle, action, children }: { title: string; open: boolean; onToggle: () => void; action?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="mt-3">
+      <div className="flex h-7 items-center justify-between gap-1 px-1">
+        <button type="button" onClick={onToggle} aria-expanded={open} className="flex flex-1 items-center gap-1.5 text-left text-[12px] font-semibold text-zinc-800">
+          <Icons.chevron width={12} height={12} className={cx("text-zinc-500 transition-transform", open && "rotate-90")} />
+          {title}
+        </button>
+        {action}
+      </div>
+      {open && <div className="mt-0.5 flex flex-col gap-0.5">{children}</div>}
+    </div>
+  )
+}
+
+/** The system name in the top bar, with system-level actions */
+function SystemMenu({
+  name,
+  dirty,
+  repo,
+  onExport,
+  onImport,
+  onDiscard,
+}: {
+  name: string
+  dirty: boolean
+  repo: RepoConfig
+  onExport: () => void
+  onImport: () => void
+  onDiscard: () => void
+}) {
+  const [open, setOpen] = React.useState(false)
+  const ref = React.useRef<HTMLDivElement>(null)
+  React.useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false)
+    document.addEventListener("mousedown", close)
+    document.addEventListener("keydown", esc)
+    return () => {
+      document.removeEventListener("mousedown", close)
+      document.removeEventListener("keydown", esc)
+    }
+  }, [open])
+  const item = "flex h-8 w-full items-center gap-2 rounded-[6px] px-2 text-left text-[12px] text-zinc-700 hover:bg-zinc-100 disabled:opacity-40 disabled:hover:bg-transparent"
+  const run = (fn: () => void) => () => {
+    setOpen(false)
+    fn()
+  }
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex h-8 max-w-56 items-center gap-1.5 rounded-[6px] px-2.5 text-[13px] font-medium text-zinc-900 hover:bg-zinc-100"
+      >
+        <span className="truncate">{name}</span>
+        {dirty && <span className="size-1.5 shrink-0 rounded-full bg-amber-500" title="Unsaved changes" />}
+        <Icons.chevron width={12} height={12} className="shrink-0 rotate-90 text-zinc-500" />
+      </button>
+      {open && (
+        <div role="menu" className="absolute top-full left-1/2 z-50 mt-1 w-60 -translate-x-1/2 rounded-[8px] border border-zinc-200 bg-white p-1 shadow-lg">
+          <div className="px-2 pt-1.5 pb-2 text-[11px] text-zinc-500">
+            {repo.owner}/{repo.repo} · {repo.branch}
+          </div>
+          <button type="button" role="menuitem" className={item} onClick={run(onExport)}>
+            <Icons.download width={13} height={13} /> Get code…
+          </button>
+          <button type="button" role="menuitem" className={item} onClick={run(onImport)}>
+            <Icons.upload width={13} height={13} /> Import theme CSS…
+          </button>
+          <button type="button" role="menuitem" className={item} disabled={!dirty} onClick={run(onDiscard)}>
+            <Icons.reset width={13} height={13} /> Discard unsaved changes
+          </button>
+          <div className="my-1 h-px bg-zinc-100" />
+          <a role="menuitem" className={item} href={`${BASE_PATH}/`} target="_blank" rel="noopener" onClick={() => setOpen(false)}>
+            <Icons.external width={13} height={13} /> View the app
+          </a>
+          <a role="menuitem" className={item} href={`https://github.com/${repo.owner}/${repo.repo}`} target="_blank" rel="noopener" onClick={() => setOpen(false)}>
+            <Icons.github width={13} height={13} /> Open the repo on GitHub
+          </a>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Flat list of changed token paths between two token sets */
 function diffTokens(a: DesignTokens, b: DesignTokens, prefix = ""): { path: string; before: string; after: string }[] {
   const out: { path: string; before: string; after: string }[] = []
   const walk = (x: unknown, y: unknown, path: string) => {
     // One entry per component change, not per field
-    const atomic = /^overrides\.\d+$/.test(path) || path === "locks"
+    const atomic = /^(?:overrides|customStyles)\.\d+$/.test(path) || path === "locks"
     if (atomic) {
       if (JSON.stringify(x) !== JSON.stringify(y))
         out.push({ path, before: x === undefined ? "–" : JSON.stringify(x), after: y === undefined ? "–" : JSON.stringify(y) })
@@ -121,7 +215,7 @@ function download(name: string, content: string, type: string) {
 /** Views where clicking the canvas can select parts */
 const selectable = (view: string) => view === "overview" || view === "style" || view.startsWith("component:") || view.startsWith("block:")
 
-type SideTab = "inspect" | "agent" | "comments"
+type SideTab = "style" | "agent" | "utilities" | "lint" | "comments"
 
 export function Editor() {
   const built = initialTokens as DesignTokens
@@ -149,7 +243,10 @@ export function Editor() {
   const [canvasReady, setCanvasReady] = React.useState(0)
   const [shareOpen, setShareOpen] = React.useState(false)
   const [newComponentOpen, setNewComponentOpen] = React.useState(false)
-  const [sideTab, setSideTab] = React.useState<SideTab>("inspect")
+  const [sideTab, setSideTab] = React.useState<SideTab>("style")
+  const [componentsFilter, setComponentsFilter] = React.useState<ComponentsFilter>({ tab: "all", q: "" })
+  const [customOpen, setCustomOpen] = React.useState(true)
+  const [defaultOpen, setDefaultOpen] = React.useState(true)
   const [shared, setShared] = React.useState(false)
   const iframeRef = React.useRef<HTMLIFrameElement>(null)
   // The iframe loads once; later view changes are sent as messages
@@ -291,10 +388,10 @@ export function Editor() {
 
   const canvasInteract = !selectable(view) || interact
   React.useEffect(() => {
-    if (canvasReady) postToCanvas({ type: "ds:view", view, display, state: previewState, interact: canvasInteract })
+    if (canvasReady) postToCanvas({ type: "ds:view", view, display, state: previewState, interact: canvasInteract, filter: componentsFilter })
     const hash = view === "overview" ? "" : `#${view}`
     if (window.location.hash !== hash) window.history.pushState(null, "", hash || window.location.pathname + window.location.search)
-  }, [view, display, previewState, canvasInteract, canvasReady, postToCanvas])
+  }, [view, display, previewState, canvasInteract, canvasReady, postToCanvas, componentsFilter])
 
   React.useEffect(() => {
     if (canvasReady) postToCanvas({ type: "ds:select", slot: selection?.slot ?? null, variant: selection?.variant, size: selection?.size, auto: selection?.auto })
@@ -445,6 +542,7 @@ export function Editor() {
     inspector = (
       <ComponentPanel
         key={panelComponent}
+        tab="style"
         componentId={panelComponent}
         componentName={panelName}
         layers={layers}
@@ -477,7 +575,17 @@ export function Editor() {
       )
   } else if (view === "style") {
     inspectorTitle = "Style"
-    inspector = <StylePanel {...inspectorProps} onImport={() => setExportOpen("import")} />
+    inspector = (
+      <StylePanel
+        {...inspectorProps}
+        onImport={() => setExportOpen("import")}
+        onApply={(next, message) => {
+          touched.current = true
+          history.set(next)
+          setToast({ message })
+        }}
+      />
+    )
   } else if (view === "lint") {
     inspectorTitle = "Lint rules"
     inspector = <LintPanel {...inspectorProps} />
@@ -485,14 +593,24 @@ export function Editor() {
     inspectorTitle = "Block"
     inspector = <BlockPanel block={canvas.blocks.find((b) => `block:${b.id}` === view)!} />
   } else {
-    inspector = <SystemPanel {...inspectorProps} onNavigate={setView} />
+    inspector = (
+      <SystemPanel
+        {...inspectorProps}
+        onNavigate={setView}
+        changes={changes}
+        dirty={dirty}
+        onExport={() => setExportOpen("css")}
+        onDiscard={() => {
+          history.set(cloneTokens(baseline))
+          setAssets({})
+        }}
+      />
+    )
   }
 
   const q = search.trim().toLowerCase()
   const demos = canvas.demos.filter((d) => !canvas.customIds.includes(d.id) && (!q || d.name.toLowerCase().includes(q)))
   const customDemos = canvas.demos.filter((d) => canvas.customIds.includes(d.id) && (!q || d.name.toLowerCase().includes(q)))
-  const blocks = canvas.blocks.filter((b) => !q || b.name.toLowerCase().includes(q) || b.category.toLowerCase().includes(q))
-  const foundations = FOUNDATIONS.filter((f) => !q || f.name.toLowerCase().includes(q))
   const overrideCount = (slotOrComponent: string) => (tokens.overrides ?? []).filter((o) => o.component === slotOrComponent).length
 
   /* ---------- canvas toolbar ---------- */
@@ -521,6 +639,31 @@ export function Editor() {
           { value: "matrix", label: "Matrix", title: "Every variant and size" },
         ]}
       />
+    )
+  }
+  if (view === "components") {
+    toolbar.push(
+      <Segmented
+        key="filter"
+        value={componentsFilter.tab}
+        onChange={(v) => setComponentsFilter((f) => ({ ...f, tab: v }))}
+        options={[
+          { value: "all", label: "All" },
+          { value: "edited", label: "Edited" },
+          { value: "variants", label: "With variants" },
+          { value: "custom", label: "Custom" },
+        ]}
+      />,
+      <div key="search" className="relative">
+        <Icons.search width={13} height={13} className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-zinc-400" />
+        <TextInput
+          placeholder="Search components"
+          value={componentsFilter.q}
+          onChange={(e) => setComponentsFilter((f) => ({ ...f, q: e.target.value }))}
+          className="h-8 w-36 pl-7"
+          aria-label="Search components"
+        />
+      </div>
     )
   }
   if (selectable(view)) {
@@ -552,9 +695,29 @@ export function Editor() {
       </select>
     )
   }
-
   if (view !== "lint") {
     toolbar.push(
+      <div key="divider" className="mx-0.5 h-5 w-px bg-zinc-200" />,
+      <Segmented
+        key="mode"
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: "light", label: <Icons.sun width={13} height={13} />, title: "Light mode" },
+          { value: "dark", label: <Icons.moon width={13} height={13} />, title: "Dark mode" },
+        ]}
+      />,
+      <Segmented
+        key="viewport"
+        value={viewport}
+        onChange={setViewport}
+        className={cx("hidden", view === "components" ? "2xl:inline-flex" : "lg:inline-flex")}
+        options={[
+          { value: "desktop", label: <Icons.desktop width={13} height={13} />, title: "Desktop" },
+          { value: "tablet", label: <Icons.tablet width={13} height={13} />, title: "Tablet (834px)" },
+          { value: "mobile", label: <Icons.phone width={13} height={13} />, title: "Mobile (390px)" },
+        ]}
+      />,
       <select
         key="zoom"
         value={zoom}
@@ -572,67 +735,111 @@ export function Editor() {
     )
   }
 
-  // "Accordion  3 parts, 1 yours"
+  /* ---------- summary next to the page name ("Color  The light palette, 31 colours") ---------- */
+  const nt = normalizeTokens(tokens)
+  const activeStyle = findStyle(nt, nt.style)
+  const editedIds = new Set(
+    canvas.demos
+      .filter((d) => {
+        const parts = Object.keys(COMPONENT_CLASSES[d.id]?.slots ?? {})
+        return (nt.overrides ?? []).some((o) => o.component === d.id || parts.includes(o.slot))
+      })
+      .map((d) => d.id)
+  )
   let viewMeta: string | null = null
   if (panelComponent) {
     const parts = Object.keys(COMPONENT_CLASSES[panelComponent]?.slots ?? {})
-    const mine = (tokens.overrides ?? []).filter((o) => o.component === panelComponent || parts.includes(o.slot)).length
-    viewMeta = `${parts.length} part${parts.length === 1 ? "" : "s"}, ${mine} yours`
+    const mine = (nt.overrides ?? []).filter((o) => o.component === panelComponent || parts.includes(o.slot)).length
+    viewMeta = `${parts.length} part${parts.length === 1 ? "" : "s"}, ${mine} edited`
+  } else if (view === "overview") {
+    viewMeta = `${nt.name}: ${activeStyle?.id ?? "custom"} · ${nt.baseColor ?? "custom colours"} · ${nt.icons!.library}`
+  } else if (view === "style") {
+    viewMeta = `${activeStyle?.name ?? "Custom"}${styleIsModified(nt) ? " (changed)" : ""} · ${nt.menu!.color.replace("-", " ")} menu, ${nt.menu!.accent} item`
+  } else if (view === "components") {
+    viewMeta = `${canvas.demos.length} components, ${editedIds.size} edited`
+  } else if (view === "blocks") {
+    viewMeta = `${canvas.blocks.length} sections`
+  } else if (view.startsWith("block:")) {
+    viewMeta = canvas.blocks.find((b) => `block:${b.id}` === view)?.category ?? null
+  } else if (view === "lint") {
+    const on = Object.values(nt.lint!.rules).filter((l) => l !== "off").length
+    viewMeta = `${on} of ${Object.keys(nt.lint!.rules).length} rules on`
+  } else if (view.startsWith("foundation:")) {
+    const id = view.slice("foundation:".length)
+    const h = nt.controls!.heights
+    viewMeta =
+      {
+        colors: `The ${mode} palette, ${COLOR_TOKENS.length + (nt.customColors?.length ?? 0)} colours`,
+        typography: `${nt.fonts.sans} · ${nt.fonts.heading} · ${nt.fonts.mono}`,
+        radius: `Base ${nt.radius}rem`,
+        shadows: `The ${mode} elevation ramp`,
+        spacing: `Base unit ${nt.spacing}rem`,
+        controls: `Heights ${h.xs} · ${h.sm} · ${h.default} · ${h.lg}`,
+        icons: `${ICON_LIBRARIES.find((l) => l.id === nt.icons!.library)?.name ?? nt.icons!.library} · stroke ${nt.icons!.strokeWidth}`,
+        brand: "Logo, mark and favicon",
+      }[id] ?? null
   }
+
+  const navItems: { id: string; label: string; icon?: IconCmp }[] = [
+    { id: "overview", label: "Overview", icon: Icons.home },
+    { id: "style", label: "Style", icon: Icons.brush },
+    ...FOUNDATIONS.map((f) => ({ id: `foundation:${f.id}`, label: f.name, icon: FOUNDATION_ICONS[f.id] })),
+    { id: "blocks", label: "Blocks", icon: Icons.layers },
+    { id: "lint", label: "Lint", icon: Icons.shield },
+  ]
+  const shownNav = navItems.filter((n) => !q || n.label.toLowerCase().includes(q))
+  const ownSlots = componentId ? Object.keys(COMPONENT_CLASSES[componentId]?.slots ?? {}) : []
 
   return (
     <div className="flex h-dvh flex-col bg-zinc-50 text-zinc-900" style={{ fontFamily: "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif" }}>
       {/* Top bar */}
-      <header className="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-200 bg-white px-3">
+      <header className="grid h-12 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-zinc-200 bg-white px-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className="flex size-7 items-center justify-center rounded-[6px] bg-zinc-900 text-[11px] font-bold text-white">DS</span>
-          <span className="truncate text-[13px] font-semibold">{tokens.name}</span>
+          <span className="truncate text-[13px] font-semibold">DS Editor</span>
           <span className="hidden rounded-[4px] bg-zinc-100 px-1.5 py-0.5 text-[11px] text-zinc-500 sm:inline">{ACTIVE_ADAPTER.name}</span>
         </div>
-        <div className="ml-auto flex items-center gap-2">
-          <Segmented
-            value={mode}
-            onChange={setMode}
-            options={[
-              { value: "light", label: <Icons.sun width={14} height={14} />, title: "Light mode" },
-              { value: "dark", label: <Icons.moon width={14} height={14} />, title: "Dark mode" },
-            ]}
+        <div className="flex items-center gap-1">
+          <SystemMenu
+            name={tokens.name}
+            dirty={dirty}
+            repo={repo}
+            onExport={() => setExportOpen("css")}
+            onImport={() => setExportOpen("import")}
+            onDiscard={() => {
+              history.set(cloneTokens(baseline))
+              setAssets({})
+            }}
           />
-          <Segmented
-            value={viewport}
-            onChange={setViewport}
-            className="hidden md:inline-flex"
-            options={[
-              { value: "desktop", label: <Icons.desktop width={14} height={14} />, title: "Desktop" },
-              { value: "tablet", label: <Icons.tablet width={14} height={14} />, title: "Tablet (834px)" },
-              { value: "mobile", label: <Icons.phone width={14} height={14} />, title: "Mobile (390px)" },
-            ]}
-          />
-          <div className="mx-1 h-5 w-px bg-zinc-200" />
           <ChromeButton variant="ghost" size="icon" title="Undo (⌘Z)" aria-label="Undo" disabled={!history.canUndo} onClick={history.undo}>
             <Icons.undo />
           </ChromeButton>
           <ChromeButton variant="ghost" size="icon" title="Redo (⇧⌘Z)" aria-label="Redo" disabled={!history.canRedo} onClick={history.redo}>
             <Icons.redo />
           </ChromeButton>
+        </div>
+        <div className="flex items-center justify-end gap-2">
           <ChromeButton
             variant="ghost"
             size="icon"
-            title="Discard unsaved changes"
-            aria-label="Discard unsaved changes"
-            disabled={!dirty}
-            onClick={() => {
-              history.set(cloneTokens(baseline))
-              setAssets({})
-            }}
+            title={openComments.length ? `Comments (${openComments.length} open)` : "Comments"}
+            aria-label="Comments"
+            aria-pressed={sideTab === "comments"}
+            onClick={() => setSideTab((t) => (t === "comments" ? "style" : "comments"))}
+            className="relative"
           >
-            <Icons.reset />
+            <Icons.chat />
+            {openComments.length > 0 && (
+              <span className={cx("absolute -top-0.5 -right-0.5 min-w-4 rounded-full px-1 text-[9px] leading-4", pageComments ? "bg-blue-600 text-white" : "bg-zinc-300 text-zinc-700")}>
+                {pageComments || openComments.length}
+              </span>
+            )}
           </ChromeButton>
           <ChromeButton onClick={() => setShareOpen(true)} title="Share a link to this draft">
             <Icons.share /> <span className="hidden sm:inline">Share</span>
           </ChromeButton>
-          <ChromeButton onClick={() => setExportOpen("css")}>
-            <Icons.download /> <span className="hidden sm:inline">Export</span>
+          <ChromeButton onClick={() => setExportOpen("css")} title="Copy or download theme.css and tokens.json">
+            <Icons.download /> <span className="hidden sm:inline">Get code</span>
           </ChromeButton>
           <ChromeButton variant="primary" onClick={() => setSaveOpen(true)} title="Save to GitHub (⌘S)">
             <Icons.github /> Save
@@ -682,184 +889,139 @@ export function Editor() {
 
       <div className="flex min-h-0 flex-1">
         {/* Sidebar */}
-        <nav className="flex w-56 shrink-0 flex-col border-r border-zinc-200 bg-white" aria-label="Design system">
-          {componentId ? (
-            <>
-              <div className="flex flex-col gap-1 border-b border-zinc-200 p-2">
+        <nav className="flex w-60 shrink-0 flex-col border-r border-zinc-200 bg-white" aria-label="Design system">
+          <div className="p-2">
+            <div className="relative">
+              <Icons.search width={14} height={14} className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-zinc-400" />
+              <TextInput placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} className="h-7 pl-7" aria-label="Search" />
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+            {shownNav.length > 0 && (
+              <div className="flex flex-col gap-0.5">
+                {shownNav.map((n) => (
+                  <NavItem key={n.id} id={n.id} active={view === n.id || (n.id === "blocks" && view.startsWith("block:"))} onSelect={setView} label={n.label} icon={n.icon} />
+                ))}
+              </div>
+            )}
+
+            <NavGroup
+              title="Custom components"
+              open={customOpen}
+              onToggle={() => setCustomOpen((o) => !o)}
+              action={
                 <button
                   type="button"
-                  onClick={() => setView("components")}
-                  className="flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-[12px] text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+                  onClick={() => setNewComponentOpen(true)}
+                  className="flex size-5 items-center justify-center rounded-[4px] text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+                  title="New custom component"
+                  aria-label="New custom component"
                 >
-                  <Icons.back width={13} height={13} /> All components
+                  <Icons.plus width={12} height={12} />
                 </button>
-                <div className="flex items-center gap-2 px-2 pt-1 text-[13px] font-semibold">
-                  <Icons.component width={14} height={14} className="text-zinc-500" /> {demo?.name ?? componentId}
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto p-2">
-                <div className="mb-1 flex items-center gap-1.5 px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">
-                  <Icons.layers width={12} height={12} /> Layers
-                </div>
-                {layers.length === 0 ? (
-                  <p className="px-2 text-[12px] text-zinc-400">Loading…</p>
-                ) : (
-                  <div className="flex flex-col gap-0.5">
-                    {[...layers]
-                      .sort((a, b) => {
-                        const own = Object.keys(COMPONENT_CLASSES[componentId]?.slots ?? {})
-                        const ao = own.includes(a.slot) ? 0 : 1
-                        const bo = own.includes(b.slot) ? 0 : 1
-                        return ao - bo || a.depth - b.depth || a.slot.localeCompare(b.slot)
-                      })
-                      .map((l) => {
-                        const own = Object.keys(COMPONENT_CLASSES[componentId]?.slots ?? {}).includes(l.slot)
-                        const active = selection?.slot === l.slot
-                        return (
-                          <button
-                            key={l.slot}
-                            type="button"
-                            onClick={() => setSelection({ slot: l.slot })}
-                            aria-pressed={active}
-                            className={cx(
-                              "flex h-7 w-full items-center gap-1.5 rounded-[6px] pr-2 text-left text-[12px] transition-colors",
-                              active ? "bg-blue-50 font-medium text-blue-800" : own ? "text-zinc-700 hover:bg-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
-                            )}
-                            style={{ paddingLeft: 8 + Math.min(l.depth, 4) * 10 }}
-                          >
-                            <span className="flex-1 truncate font-mono">{l.slot}</span>
-                            <span className="text-[10px] text-zinc-400">{l.count}</span>
-                          </button>
-                        )
-                      })}
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="p-2">
-                <div className="relative">
-                  <Icons.search width={14} height={14} className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-zinc-400" />
-                  <TextInput placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} className="h-7 pl-7" aria-label="Search" />
-                </div>
-              </div>
-              <div className="flex-1 overflow-y-auto px-2 pb-4">
-                {!q && (
-                  <div className="flex flex-col gap-0.5">
-                    <NavItem id="overview" active={view === "overview"} onSelect={setView} label="Overview" icon={Icons.home} />
-                    <NavItem id="style" active={view === "style"} onSelect={setView} label="Style" icon={Icons.brush} />
-                    <NavItem id="components" active={view === "components"} onSelect={setView} label="All components" icon={Icons.grid} />
-                    <NavItem id="blocks" active={view === "blocks"} onSelect={setView} label="Blocks" icon={Icons.layers} />
-                    <NavItem id="lint" active={view === "lint"} onSelect={setView} label="Lint" icon={Icons.shield} />
-                  </div>
-                )}
-                {foundations.length > 0 && (
-                  <>
-                    <div className="mt-4 mb-1 px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Foundations</div>
-                    <div className="flex flex-col gap-0.5">
-                      {foundations.map((f) => (
-                        <NavItem key={f.id} id={`foundation:${f.id}`} active={view === `foundation:${f.id}`} onSelect={setView} label={f.name} icon={FOUNDATION_ICONS[f.id]} />
-                      ))}
-                    </div>
-                  </>
-                )}
-                {(customDemos.length > 0 || !q) && (
-                  <>
-                    <div className="mt-4 mb-1 flex items-center justify-between px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">
-                      Custom components
-                      <button
-                        type="button"
-                        onClick={() => setNewComponentOpen(true)}
-                        className="flex size-5 items-center justify-center rounded-[4px] text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
-                        title="New custom component"
-                        aria-label="New custom component"
-                      >
-                        <Icons.plus width={12} height={12} />
-                      </button>
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      {customDemos.map((d) => {
-                        const n = overrideCount(d.id)
-                        return (
-                          <NavItem
-                            key={d.id}
-                            id={`component:${d.id}`}
-                            active={false}
-                            onSelect={setView}
-                            label={d.name}
-                            icon={Icons.component}
-                            badge={n > 0 ? <span className="size-1.5 rounded-full bg-blue-500" title={`${n} change${n === 1 ? "" : "s"}`} /> : undefined}
-                          />
-                        )
-                      })}
-                      {customDemos.length === 0 && (
-                        <button type="button" onClick={() => setNewComponentOpen(true)} className="px-2 py-1 text-left text-[12px] text-zinc-500 hover:text-zinc-900">
-                          New component…
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-                {blocks.length > 0 && (
-                  <>
-                    <div className="mt-4 mb-1 px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Blocks</div>
-                    <div className="flex flex-col gap-0.5">
-                      {blocks.map((b) => (
-                        <NavItem key={b.id} id={`block:${b.id}`} active={view === `block:${b.id}`} onSelect={setView} label={b.name} icon={Icons.layers} />
-                      ))}
-                    </div>
-                  </>
-                )}
-                {demos.length > 0 && (
-                  <>
-                    <div className="mt-4 mb-1 px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Components</div>
-                    <div className="flex flex-col gap-0.5">
-                      {demos.map((d) => {
-                        const n = overrideCount(d.id)
-                        return (
-                          <NavItem
-                            key={d.id}
-                            id={`component:${d.id}`}
-                            active={false}
-                            onSelect={setView}
-                            label={d.name}
-                            icon={Icons.component}
-                            badge={n > 0 ? <span className="size-1.5 rounded-full bg-blue-500" title={`${n} change${n === 1 ? "" : "s"}`} /> : undefined}
-                          />
-                        )
-                      })}
-                    </div>
-                  </>
-                )}
-              </div>
-            </>
-          )}
-          <div className="border-t border-zinc-200 p-2">
-            <a href={`${BASE_PATH}/`} target="_blank" rel="noopener" className="flex h-7 items-center gap-2 rounded-[6px] px-2 text-[12px] text-zinc-600 hover:bg-zinc-100">
-              <Icons.external width={13} height={13} /> View the app
-            </a>
-            <a
-              href={`https://github.com/${repo.owner}/${repo.repo}`}
-              target="_blank"
-              rel="noopener"
-              className="flex h-7 items-center gap-2 rounded-[6px] px-2 text-[12px] text-zinc-600 hover:bg-zinc-100"
+              }
             >
-              <Icons.github width={13} height={13} /> {repo.repo}
-            </a>
+              {customDemos.map((d) => {
+                const n = overrideCount(d.id)
+                return (
+                  <NavItem
+                    key={d.id}
+                    id={`component:${d.id}`}
+                    active={componentId === d.id}
+                    onSelect={setView}
+                    label={d.name}
+                    icon={Icons.component}
+                    badge={n > 0 ? <span className="size-1.5 rounded-full bg-blue-500" title={`${n} change${n === 1 ? "" : "s"}`} /> : undefined}
+                  />
+                )
+              })}
+              {customDemos.length === 0 && !q && (
+                <div className="flex flex-col items-start gap-2 rounded-[6px] bg-zinc-50 p-2.5 text-[11px] text-zinc-500">
+                  Your own components, styled like the rest. Start one here or in code under components/custom.
+                  <ChromeButton size="sm" onClick={() => setNewComponentOpen(true)}>
+                    <Icons.plus width={12} height={12} /> New component
+                  </ChromeButton>
+                </div>
+              )}
+            </NavGroup>
+
+            <NavGroup title="Default Components" open={defaultOpen} onToggle={() => setDefaultOpen((o) => !o)}>
+              {!q && <NavItem id="components" active={view === "components"} onSelect={setView} label="All components" icon={Icons.component} />}
+              {demos.map((d) => {
+                const n = overrideCount(d.id)
+                return (
+                  <NavItem
+                    key={d.id}
+                    id={`component:${d.id}`}
+                    active={componentId === d.id}
+                    onSelect={setView}
+                    label={d.name}
+                    icon={Icons.component}
+                    badge={n > 0 ? <span className="size-1.5 rounded-full bg-blue-500" title={`${n} change${n === 1 ? "" : "s"}`} /> : undefined}
+                  />
+                )
+              })}
+            </NavGroup>
+          </div>
+
+          {/* Component Layers: always here, filled on a component page */}
+          <div className="flex h-[32%] min-h-40 shrink-0 flex-col border-t border-zinc-200">
+            <div className="flex h-9 shrink-0 items-center px-3 text-[12px] font-semibold text-zinc-900">Component Layers</div>
+            {componentId ? (
+              layers.length === 0 ? (
+                <p className="px-3 text-[12px] text-zinc-400">Loading…</p>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2">
+                  {[...layers]
+                    .sort((a, b) => {
+                      const ao = ownSlots.includes(a.slot) ? 0 : 1
+                      const bo = ownSlots.includes(b.slot) ? 0 : 1
+                      return ao - bo || a.depth - b.depth || a.slot.localeCompare(b.slot)
+                    })
+                    .map((l) => {
+                      const own = ownSlots.includes(l.slot)
+                      const active = selection?.slot === l.slot
+                      return (
+                        <button
+                          key={l.slot}
+                          type="button"
+                          onClick={() => setSelection({ slot: l.slot })}
+                          aria-pressed={active}
+                          className={cx(
+                            "flex h-7 w-full shrink-0 items-center gap-1.5 rounded-[6px] pr-2 text-left text-[12px] transition-colors",
+                            active ? "bg-blue-50 font-medium text-blue-800" : own ? "text-zinc-700 hover:bg-zinc-100" : "text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                          )}
+                          style={{ paddingLeft: 8 + Math.min(l.depth, 4) * 10 }}
+                        >
+                          <span className="flex-1 truncate font-mono">{l.slot}</span>
+                          <span className="text-[10px] text-zinc-400">{l.count}</span>
+                        </button>
+                      )
+                    })}
+                </div>
+              )
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center gap-1.5 px-6 text-center">
+                <span className="flex size-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
+                  <Icons.cursor width={14} height={14} />
+                </span>
+                <span className="text-[12px] font-medium text-zinc-800">Open the component page</span>
+                <span className="text-[11px] text-zinc-500">Select a component from the panel above to edit its layers.</span>
+              </div>
+            )}
           </div>
         </nav>
 
         {/* Canvas */}
         <main className="flex min-w-0 flex-1 flex-col bg-zinc-100">
-          <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-200 bg-white/70 px-3">
-            <span className="truncate text-[13px] font-medium text-zinc-800">{pickedComponent ? panelName : viewLabel(view)}</span>
+          <div className="flex h-11 shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-3">
+            <span className="shrink-0 text-[13px] font-medium text-zinc-900">{pickedComponent ? panelName : viewLabel(view)}</span>
             {viewMeta && <span className="truncate text-[12px] text-zinc-500">{viewMeta}</span>}
-            <div className="ml-auto flex items-center gap-2">{toolbar}</div>
+            <div className="ml-auto flex shrink-0 items-center gap-2">{toolbar}</div>
           </div>
-          <div className={cx("min-h-0 flex-1 justify-center overflow-auto p-4", view === "lint" ? "hidden" : "flex")}>
+          <div className={cx("min-h-0 flex-1 justify-center overflow-auto", view === "lint" ? "hidden" : "flex", viewport === "desktop" ? "" : "p-4")}>
             <div
-              className="h-full overflow-hidden rounded-[10px] border border-zinc-200 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06)] transition-[width] duration-200"
+              className={cx("h-full overflow-hidden transition-[width] duration-200", viewport === "desktop" ? "" : "rounded-[10px] border border-zinc-200 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06)]")}
               style={{ width: VIEWPORT_WIDTH[viewport], maxWidth: "100%" }}
             >
               <iframe
@@ -867,7 +1029,7 @@ export function Editor() {
                 title="Design system canvas"
                 src={canvasSrc}
                 onLoad={() => postToCanvas({ type: "ds:ping" })}
-                className="border-0"
+                className="block border-0"
                 style={{ width: `${100 / zoom}%`, height: `${100 / zoom}%`, transform: `scale(${zoom})`, transformOrigin: "0 0" }}
               />
             </div>
@@ -879,55 +1041,98 @@ export function Editor() {
           )}
         </main>
 
-        {/* Inspector */}
+        {/* Right panel */}
         <aside className="flex w-80 shrink-0 flex-col border-l border-zinc-200 bg-white" aria-label="Inspector">
-          <div className="flex h-10 shrink-0 items-center gap-1 border-b border-zinc-200 px-2" role="tablist" aria-label="Panel">
-            {(
-              [
-                { id: "inspect", label: "Inspect", icon: Icons.cursor },
-                { id: "agent", label: "Agent", icon: Icons.sparkle },
-                { id: "comments", label: "Comments", icon: Icons.chat },
-              ] as const
-            ).map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                role="tab"
-                aria-selected={sideTab === tab.id}
-                onClick={() => setSideTab(tab.id)}
-                className={cx(
-                  "flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-[12px] transition-colors",
-                  sideTab === tab.id ? "bg-zinc-100 font-medium text-zinc-900" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
-                )}
-              >
-                <tab.icon width={13} height={13} />
-                {tab.label}
-                {tab.id === "comments" && openComments.length > 0 && (
-                  <span
-                    className={cx("rounded-full px-1.5 text-[10px]", pageComments ? "bg-blue-600 text-white" : "bg-zinc-200 text-zinc-600")}
-                    title={`${openComments.length} open, ${pageComments} on this page`}
-                  >
-                    {pageComments || openComments.length}
-                  </span>
-                )}
+          {sideTab === "comments" ? (
+            <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-200 px-3 text-[12px] font-semibold text-zinc-900">
+              <span className="flex items-center gap-1.5">
+                <Icons.chat width={13} height={13} /> Comments
+              </span>
+              <button type="button" onClick={() => setSideTab("style")} className="text-zinc-500 hover:text-zinc-900" aria-label="Close comments" title="Close">
+                <Icons.close width={14} height={14} />
               </button>
-            ))}
-          </div>
-          <div className={cx("min-h-0 flex-1 flex-col overflow-y-auto", sideTab === "inspect" ? "flex" : "hidden")} role="tabpanel" aria-label="Inspect">
-            <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-200 px-4 text-[12px] font-semibold text-zinc-900">
-              {inspectorTitle}
-              {pickedComponent && (
-                <button type="button" className="text-[11px] font-normal text-zinc-500 underline" onClick={() => setSelection(null)}>
-                  Done
-                </button>
-              )}
             </div>
-            {inspector}
-          </div>
+          ) : (
+            <div className="flex h-10 shrink-0 items-center gap-1 border-b border-zinc-200 px-2" role="tablist" aria-label="Panel">
+              {(
+                [
+                  { id: "style", label: "Style" },
+                  { id: "agent", label: "Agent" },
+                  { id: "utilities", label: "Utilities" },
+                  { id: "lint", label: "Lint" },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={sideTab === tab.id}
+                  onClick={() => setSideTab(tab.id)}
+                  className={cx(
+                    "flex h-7 items-center rounded-[6px] px-2.5 text-[12px] transition-colors",
+                    sideTab === tab.id ? "bg-zinc-100 font-medium text-zinc-900" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {sideTab === "style" && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" role="tabpanel" aria-label="Style">
+              <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-200 px-4 text-[12px] font-semibold text-zinc-900">
+                {inspectorTitle}
+                {pickedComponent && (
+                  <button type="button" className="text-[11px] font-normal text-zinc-500 underline" onClick={() => setSelection(null)}>
+                    Done
+                  </button>
+                )}
+              </div>
+              {inspector}
+            </div>
+          )}
           {/* The agent stays mounted so the chat survives switching tabs and pages */}
           <div className={cx("min-h-0 flex-1 flex-col", sideTab === "agent" ? "flex" : "hidden")} role="tabpanel" aria-label="Agent">
             <AgentPanel context={agentContext} view={view} viewName={pickedComponent ? panelName : viewLabel(view)} mode={mode} selection={selection} />
           </div>
+          {sideTab === "utilities" && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" role="tabpanel" aria-label="Utilities">
+              {panelComponent ? (
+                <ComponentPanel
+                  key={`u-${panelComponent}`}
+                  tab="utilities"
+                  componentId={panelComponent}
+                  componentName={panelName}
+                  layers={layers}
+                  selection={selection}
+                  onSelect={setSelection}
+                  state={previewState}
+                  setState={setPreviewState}
+                  tokens={tokens}
+                  update={update}
+                  locked={isLocked("overrides")}
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-1.5 px-6 py-10 text-center">
+                  <span className="text-[12px] font-medium text-zinc-800">No component selected</span>
+                  <span className="text-[11px] text-zinc-500">
+                    Open a component, or click a part on the canvas, to see the Tailwind classes it ships with and the CSS your changes generate.
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+          {sideTab === "lint" && (
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto" role="tabpanel" aria-label="Lint">
+              <LintPanel {...inspectorProps} />
+              <div className="px-4 pb-4">
+                <ChromeButton onClick={() => setView("lint")}>
+                  <Icons.shield /> Check the code on GitHub
+                </ChromeButton>
+              </div>
+            </div>
+          )}
           {sideTab === "comments" && (
             <div className="flex min-h-0 flex-1 flex-col" role="tabpanel" aria-label="Comments">
               <CommentsPanel

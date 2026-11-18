@@ -188,12 +188,19 @@ function menuCss(t: DesignTokens): string {
   const out: string[] = []
   const contents = MENU_FAMILIES.map((f) => `[data-slot="${f}-content"]`).join(", ")
   const items = MENU_FAMILIES.flatMap((f) => [`[data-slot^="${f}-"][data-highlighted]`, `[data-slot$="${f}-item"]:focus`]).join(", ")
-  if (m.color === "inverted") {
+  const inverted = m.color === "inverted" || m.color === "inverted-translucent"
+  const translucent = m.color === "default-translucent" || m.color === "inverted-translucent"
+  if (inverted) {
     out.push(block(`:is(${contents})`, { "background-color": "var(--foreground)", color: "var(--background)", "--muted-foreground": "color-mix(in oklch, var(--background) 65%, transparent)", "--border": "color-mix(in oklch, var(--background) 18%, transparent)" }))
+  }
+  if (translucent) {
+    // Frosted menus: the surface lets the page show through, blurred
+    const surface = inverted ? "var(--foreground)" : "var(--popover)"
+    out.push(block(`:is(${contents})`, { "background-color": `color-mix(in oklch, ${surface} 78%, transparent)`, "-webkit-backdrop-filter": "blur(12px) saturate(1.4)", "backdrop-filter": "blur(12px) saturate(1.4)" }))
   }
   if (m.accent === "bold") {
     out.push(block(`:is(${items})`, { "background-color": "var(--primary)", color: "var(--primary-foreground)" }))
-  } else if (m.color === "inverted") {
+  } else if (inverted) {
     out.push(block(`:is(${items})`, { "background-color": "color-mix(in oklch, var(--background) 14%, transparent)", color: "var(--background)" }))
   }
   return out.join("")
