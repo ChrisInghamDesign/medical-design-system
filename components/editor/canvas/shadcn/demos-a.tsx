@@ -1,8 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { HugeiconsIcon } from "@hugeicons/react"
 import {
+  HugeiconsIcon,
   Add01Icon,
   Alert02Icon,
   ArrowDown01Icon,
@@ -27,7 +27,7 @@ import {
   TextItalicIcon,
   TextUnderlineIcon,
   UserIcon,
-} from "@hugeicons/core-free-icons"
+} from "@/lib/ds/icons"
 import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis } from "recharts"
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"

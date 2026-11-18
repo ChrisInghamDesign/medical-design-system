@@ -3,8 +3,13 @@
 import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "cn"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { UnfoldMoreIcon, Tick02Icon, ArrowUp01Icon, ArrowDown01Icon } from "@hugeicons/core-free-icons"
+import {
+  HugeiconsIcon,
+  UnfoldMoreIcon,
+  Tick02Icon,
+  ArrowUp01Icon,
+  ArrowDown01Icon,
+} from "@/lib/ds/icons"
 
 // medical-copy · registry v1 · shadcn-ui/ui@4233ed1c
 

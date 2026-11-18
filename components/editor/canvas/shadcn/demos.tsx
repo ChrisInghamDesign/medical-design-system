@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { Alert02Icon, Calendar03Icon, File01Icon, Settings02Icon } from "@hugeicons/core-free-icons"
+import { Alert02Icon, Calendar03Icon, File01Icon, Settings02Icon } from "@/lib/ds/icons"
 
 import classes from "@/design-system/component-classes.json"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"

@@ -15,8 +15,7 @@ import {
   InputGroup,
   InputGroupAddon,
 } from "@/components/ui/input-group"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { SearchIcon, Tick02Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon, SearchIcon, Tick02Icon } from "@/lib/ds/icons"
 
 // medical-copy · registry v1 · shadcn-ui/ui@4233ed1c
 

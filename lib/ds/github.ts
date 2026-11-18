@@ -17,7 +17,8 @@ export const DEFAULT_REPO: RepoConfig = {
 
 const API = "https://api.github.com"
 
-async function gh<T>(path: string, token: string | null, init?: RequestInit): Promise<T> {
+/** Call the GitHub REST API. `need` names the token permission a 403/404 most likely means is missing. */
+export async function githubApi<T>(path: string, token: string | null, init?: RequestInit, need: "Contents" | "Issues" = "Contents"): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     ...init,
     headers: {
@@ -38,7 +39,7 @@ async function gh<T>(path: string, token: string | null, init?: RequestInit): Pr
       res.status === 401
         ? "The token is invalid or expired."
         : res.status === 403 || res.status === 404
-          ? "The token can't write to this repo. Give it Contents: Read and write access to this repository."
+          ? `The token can't ${need === "Issues" ? "post comments on" : "write to"} this repo. Give it ${need}: Read and write access to this repository.`
           : ""
     throw new Error([`GitHub ${res.status}`, detail, hint].filter(Boolean).join(" · "))
   }
@@ -47,11 +48,11 @@ async function gh<T>(path: string, token: string | null, init?: RequestInit): Pr
 
 /** Check a token can push to the repo. Returns the GitHub login. */
 export async function verifyToken(token: string, repo: RepoConfig): Promise<string> {
-  const info = await gh<{ permissions?: { push?: boolean } }>(`/repos/${repo.owner}/${repo.repo}`, token)
+  const info = await githubApi<{ permissions?: { push?: boolean } }>(`/repos/${repo.owner}/${repo.repo}`, token)
   if (!info.permissions?.push) {
     throw new Error("This token can read the repo but not write to it. Give it Contents: Read and write.")
   }
-  const user = await gh<{ login: string }>(`/user`, token).catch(() => ({ login: "your account" }))
+  const user = await githubApi<{ login: string }>(`/user`, token).catch(() => ({ login: "your account" }))
   return user.login
 }
 
@@ -79,20 +80,20 @@ export async function commitFiles(
   token: string
 ): Promise<string> {
   const base = `/repos/${repo.owner}/${repo.repo}`
-  const ref = await gh<{ object: { sha: string } }>(`${base}/git/ref/heads/${repo.branch}`, token)
-  const parent = await gh<{ tree: { sha: string } }>(`${base}/git/commits/${ref.object.sha}`, token)
-  const tree = await gh<{ sha: string }>(`${base}/git/trees`, token, {
+  const ref = await githubApi<{ object: { sha: string } }>(`${base}/git/ref/heads/${repo.branch}`, token)
+  const parent = await githubApi<{ tree: { sha: string } }>(`${base}/git/commits/${ref.object.sha}`, token)
+  const tree = await githubApi<{ sha: string }>(`${base}/git/trees`, token, {
     method: "POST",
     body: JSON.stringify({
       base_tree: parent.tree.sha,
       tree: files.map((f) => ({ path: f.path, mode: "100644", type: "blob", content: f.content })),
     }),
   })
-  const commit = await gh<{ sha: string; html_url: string }>(`${base}/git/commits`, token, {
+  const commit = await githubApi<{ sha: string; html_url: string }>(`${base}/git/commits`, token, {
     method: "POST",
     body: JSON.stringify({ message, tree: tree.sha, parents: [ref.object.sha] }),
   })
-  await gh(`${base}/git/refs/heads/${repo.branch}`, token, {
+  await githubApi(`${base}/git/refs/heads/${repo.branch}`, token, {
     method: "PATCH",
     body: JSON.stringify({ sha: commit.sha }),
   })

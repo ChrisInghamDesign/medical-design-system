@@ -1,6 +1,5 @@
 import { cn } from "cn"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { Loading03Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon, Loading03Icon } from "@/lib/ds/icons"
 
 // medical-copy · registry v1 · shadcn-ui/ui@4233ed1c
 

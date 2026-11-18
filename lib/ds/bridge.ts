@@ -4,6 +4,8 @@ export type CanvasDisplay = "demo" | "matrix" | "preview"
 
 /** Messages from the editor to the canvas iframe */
 export type EditorToCanvas =
+  /** Asks the canvas to (re)announce itself, in case its first ds:ready came before the editor was listening */
+  | { type: "ds:ping" }
   | { type: "ds:tokens"; tokens: DesignTokens; mode: Mode; assets: Record<string, string> }
   | { type: "ds:view"; view: string; display: CanvasDisplay; state: OverrideState | null; interact: boolean }
   | { type: "ds:select"; slot: string | null; variant?: string; size?: string }

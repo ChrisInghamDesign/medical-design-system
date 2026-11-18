@@ -6,8 +6,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowRight01Icon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon, ArrowRight01Icon } from "@/lib/ds/icons"
 
 // medical-copy · registry v1 · shadcn-ui/ui@4233ed1c
 

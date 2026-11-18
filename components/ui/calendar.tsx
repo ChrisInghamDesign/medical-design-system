@@ -10,8 +10,7 @@ import {
 } from "react-day-picker"
 
 import { Button, buttonVariants } from "@/components/ui/button"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { ArrowLeftIcon, ArrowRightIcon, ArrowDownIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon, ArrowLeftIcon, ArrowRightIcon, ArrowDownIcon } from "@/lib/ds/icons"
 
 // medical-copy · registry v1 · shadcn-ui/ui@4233ed1c
 

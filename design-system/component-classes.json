@@ -5144,5 +5144,33 @@
   },
   "slotCva": {},
   "cva": {}
+ },
+ "stat-card": {
+  "slots": {
+   "stat-card": [
+    "bg-card",
+    "text-card-foreground",
+    "flex",
+    "flex-col",
+    "gap-1",
+    "rounded-xl",
+    "border",
+    "p-5",
+    "shadow-sm"
+   ],
+   "stat-card-label": [
+    "text-muted-foreground",
+    "text-sm"
+   ],
+   "stat-card-value": [
+    "font-heading",
+    "text-3xl",
+    "font-semibold",
+    "tracking-tight"
+   ],
+   "stat-card-change": []
+  },
+  "slotCva": {},
+  "cva": {}
  }
 }

@@ -2,6 +2,8 @@
 
 import * as React from "react"
 
+import { BLOCKS, type Block } from "@/components/blocks"
+import { CUSTOM_DEMOS } from "@/components/custom"
 import { MedicalOverview } from "@/components/showcase/medical-overview"
 
 import {
@@ -24,14 +26,21 @@ import { DEMOS, type Demo } from "./shadcn/demos"
 export interface LibraryCanvas {
   adapterId: string
   overview: { name: string; render: () => React.ReactNode }
+  /** The library's components followed by your custom components */
   demos: Demo[]
+  /** Ids of the custom components (components/custom) within demos */
+  customIds: string[]
+  /** Ready-made page sections (components/blocks) */
+  blocks: Block[]
 }
 
 export const CANVASES: Record<string, LibraryCanvas> = {
   shadcn: {
     adapterId: "shadcn",
     overview: { name: "Medical overview", render: () => <MedicalOverview /> },
-    demos: DEMOS,
+    demos: [...DEMOS, ...CUSTOM_DEMOS],
+    customIds: CUSTOM_DEMOS.map((d) => d.id),
+    blocks: BLOCKS,
   },
 }
 

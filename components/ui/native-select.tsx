@@ -1,7 +1,6 @@
 import * as React from "react"
 import { cn } from "cn"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { UnfoldMoreIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon, UnfoldMoreIcon } from "@/lib/ds/icons"
 
 // medical-copy · registry v1 · shadcn-ui/ui@4233ed1c
 

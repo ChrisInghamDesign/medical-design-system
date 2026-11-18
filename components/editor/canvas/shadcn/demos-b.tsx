@@ -19,7 +19,7 @@ import {
   TextItalicIcon,
   TextUnderlineIcon,
   UserIcon,
-} from "@hugeicons/core-free-icons"
+} from "@/lib/ds/icons"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"

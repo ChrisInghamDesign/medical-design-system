@@ -6,7 +6,10 @@ import initialTokens from "@/design-system/tokens.json"
 import { ACTIVE_ADAPTER } from "@/lib/ds/adapters"
 import { BASE_PATH, type CanvasDisplay, type CanvasLayer, type CanvasToEditor, type EditorToCanvas } from "@/lib/ds/bridge"
 import { googleFontUrls } from "@/lib/ds/fonts"
+import { setIconSettings } from "@/lib/ds/icons"
 import { normalizeTokens, type DesignTokens, type Mode, type OverrideState } from "@/lib/ds/types"
+
+import { BLOCK_CATEGORIES } from "@/components/blocks"
 
 import { MenuPreview, Section } from "./foundations"
 import { CANVASES, FOUNDATIONS, renderFoundation } from "./registry"
@@ -29,6 +32,7 @@ function applyTokens(tokens: DesignTokens, mode: Mode) {
   const root = document.documentElement
   root.classList.toggle("dark", mode === "dark")
   root.style.colorScheme = mode
+  setIconSettings({ library: tokens.icons?.library ?? "hugeicons", strokeWidth: tokens.icons?.strokeWidth ?? 2 })
   for (const href of googleFontUrls(tokens.fonts)) {
     if (!document.head.querySelector(`link[data-ds-font][href="${CSS.escape(href)}"]`)) {
       const link = document.createElement("link")
@@ -188,7 +192,8 @@ export function Canvas() {
     const onMessage = (e: MessageEvent<EditorToCanvas>) => {
       if (e.origin !== window.location.origin || !e.data || typeof e.data !== "object") return
       const msg = e.data
-      if (msg.type === "ds:tokens") {
+      if (msg.type === "ds:ping") post({ type: "ds:ready" })
+      else if (msg.type === "ds:tokens") {
         setTokens(msg.tokens)
         setMode(msg.mode)
         setAssets(msg.assets ?? {})
@@ -331,7 +336,12 @@ export function Canvas() {
               className="bg-card hover:ring-primary/40 flex min-w-0 cursor-pointer flex-col gap-4 overflow-hidden rounded-xl border p-5 text-left transition hover:ring-2"
             >
               <div>
-                <div className="font-medium">{demo.name}</div>
+                <div className="flex items-center gap-2 font-medium">
+                  {demo.name}
+                  {canvas.customIds.includes(demo.id) && (
+                    <span className="bg-muted text-muted-foreground rounded-md px-1.5 py-0.5 text-xs font-normal">Custom</span>
+                  )}
+                </div>
                 <div className="text-muted-foreground text-sm">{demo.description}</div>
               </div>
               <div className="pointer-events-none flex min-h-24 items-center justify-center">
@@ -342,6 +352,45 @@ export function Canvas() {
         </div>
       </Page>
     )
+  } else if (view === "blocks") {
+    body = (
+      <Page title="Blocks" description={`${canvas.blocks.length} ready-made sections built from your components. Click one to open it.`}>
+        <div className="flex flex-col gap-12">
+          {BLOCK_CATEGORIES.map((category) => {
+            const list = canvas.blocks.filter((b) => b.category === category)
+            if (!list.length) return null
+            return (
+              <section key={category} className="flex flex-col gap-6">
+                <h2 className="font-heading text-xl font-semibold tracking-tight">{category}</h2>
+                {list.map((block) => (
+                  <div
+                    key={block.id}
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => post({ type: "ds:navigate", view: `block:${block.id}` })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") post({ type: "ds:navigate", view: `block:${block.id}` })
+                    }}
+                    className="hover:ring-primary/40 flex cursor-pointer flex-col overflow-hidden rounded-xl border transition hover:ring-2"
+                  >
+                    <div className="bg-card flex items-baseline justify-between gap-4 border-b px-5 py-3">
+                      <span className="font-medium">{block.name}</span>
+                      <span className="text-muted-foreground truncate text-sm">{block.description}</span>
+                    </div>
+                    <div className="pointer-events-none">
+                      <DemoBoundary resetKey={block.id}>{block.render()}</DemoBoundary>
+                    </div>
+                  </div>
+                ))}
+              </section>
+            )
+          })}
+        </div>
+      </Page>
+    )
+  } else if (view.startsWith("block:")) {
+    const block = canvas.blocks.find((b) => b.id === view.slice("block:".length))
+    body = block ? block.render() : <Page title="Block not found" />
   } else if (view.startsWith("component:")) {
     const demo = canvas.demos.find((d) => d.id === view.slice("component:".length))
     if (!demo) body = <Page title="Component not found" />

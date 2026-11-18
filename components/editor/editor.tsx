@@ -8,9 +8,12 @@ import { importShadcnCss } from "@/lib/ds/adapters/shadcn"
 import { BASE_PATH, type CanvasDisplay, type CanvasLayer, type CanvasToEditor, type EditorToCanvas } from "@/lib/ds/bridge"
 import { COMPONENT_CLASSES, SLOT_COMPONENT } from "@/lib/ds/classes"
 import { commitFiles, DEFAULT_REPO, readRepoFile, verifyToken, type RepoConfig } from "@/lib/ds/github"
-import { cloneTokens, getPath, sameTokens, setPath, storage, useTokenHistory } from "@/lib/ds/store"
+import type { AgentContext } from "@/lib/ds/agent"
+import { decodeShare, SHARE_PREFIX } from "@/lib/ds/share"
+import { cloneTokens, getPath, isPathLocked, sameTokens, setPath, storage, useTokenHistory } from "@/lib/ds/store"
 import type { DesignTokens, Mode, OverrideState } from "@/lib/ds/types"
 
+import { AgentPanel } from "./agent-panel"
 import { CANVASES, FOUNDATIONS } from "./canvas/registry"
 import { ChromeButton, cx, FieldRow, Icons, Modal, Segmented, TextInput, Toast } from "./chrome"
 import { ComponentPanel, STATES, type Selection } from "./component-panel"
@@ -29,6 +32,8 @@ import {
   type InspectorProps,
   type PendingAsset,
 } from "./inspector"
+import { CommentsPanel, ShareDialog, useComments } from "./collab"
+import { BlockPanel, NewComponentDialog } from "./library-panels"
 import { LintPage } from "./lint-page"
 
 const TOKENS_PATH = "design-system/tokens.json"
@@ -47,12 +52,6 @@ const FOUNDATION_ICONS: Record<string, IconCmp> = {
   controls: Icons.toggle,
   icons: Icons.star,
   brand: Icons.image,
-}
-
-/** Lock areas that also cover related token paths */
-const LOCK_ALIASES: Record<string, string[]> = {
-  typeScale: ["fontWeights", "tracking"],
-  radius: ["radiusSteps"],
 }
 
 function NavItem({ id, label, icon: Icon, active, onSelect, badge }: { id: string; label: string; icon?: IconCmp; active: boolean; onSelect: (id: string) => void; badge?: React.ReactNode }) {
@@ -103,6 +102,8 @@ function viewLabel(view: string) {
   if (view === "style") return "Style"
   if (view === "lint") return "Lint"
   if (view === "components") return "All components"
+  if (view === "blocks") return "Blocks"
+  if (view.startsWith("block:")) return canvas.blocks.find((b) => `block:${b.id}` === view)?.name ?? "Block"
   if (view.startsWith("foundation:")) return FOUNDATIONS.find((f) => `foundation:${f.id}` === view)?.name ?? "Foundation"
   if (view.startsWith("component:")) return canvas.demos.find((d) => `component:${d.id}` === view)?.name ?? "Component"
   return view
@@ -118,7 +119,9 @@ function download(name: string, content: string, type: string) {
 }
 
 /** Views where clicking the canvas can select parts */
-const selectable = (view: string) => view === "overview" || view === "style" || view.startsWith("component:")
+const selectable = (view: string) => view === "overview" || view === "style" || view.startsWith("component:") || view.startsWith("block:")
+
+type SideTab = "inspect" | "agent" | "comments"
 
 export function Editor() {
   const built = initialTokens as DesignTokens
@@ -142,7 +145,12 @@ export function Editor() {
   const [exportOpen, setExportOpen] = React.useState<false | "css" | "import">(false)
   const [restored, setRestored] = React.useState(false)
   const [toast, setToast] = React.useState<{ message: React.ReactNode; tone?: "default" | "error" } | null>(null)
-  const [canvasReady, setCanvasReady] = React.useState(false)
+  // Counts ds:ready messages, so a reloaded canvas gets the tokens, view and selection again
+  const [canvasReady, setCanvasReady] = React.useState(0)
+  const [shareOpen, setShareOpen] = React.useState(false)
+  const [newComponentOpen, setNewComponentOpen] = React.useState(false)
+  const [sideTab, setSideTab] = React.useState<SideTab>("inspect")
+  const [shared, setShared] = React.useState(false)
   const iframeRef = React.useRef<HTMLIFrameElement>(null)
   // The iframe loads once; later view changes are sent as messages
   const [canvasSrc] = React.useState(() => `${BASE_PATH}/editor/canvas/?view=overview`)
@@ -170,13 +178,39 @@ export function Editor() {
     setViewRaw(v)
   }, [])
 
+  /* ---------- share links ---------- */
+  // Open a shared draft on top of yours (one undo gets yours back), then tidy the URL
+  // so reloading doesn't apply it again over later edits
+  const { set: setTokensForShare } = history
+  const openShareLink = React.useCallback(
+    (data: string) => {
+      touched.current = true
+      decodeShare(data).then((payload) => {
+        const view = payload?.view ?? viewRef.current
+        window.history.replaceState(null, "", window.location.pathname + window.location.search + (view === "overview" ? "" : `#${view}`))
+        if (!payload) {
+          setToast({ message: "This share link is damaged or incomplete, so it couldn't be opened.", tone: "error" })
+          return
+        }
+        setTokensForShare(payload.tokens)
+        setRestored(false)
+        setShared(true)
+        if (payload.view) setView(payload.view)
+      })
+    },
+    [setTokensForShare, setView]
+  )
+
   /* ---------- load: token, draft, latest tokens from GitHub ---------- */
   /* eslint-disable react-hooks/set-state-in-effect -- browser-only state (URL, localStorage) is read after the static page loads */
   React.useEffect(() => {
     const t = storage.get(tokenKey)
     if (t) setToken(t)
-    const hash = decodeURIComponent(window.location.hash.slice(1))
+    const rawHash = window.location.hash.slice(1)
+    const shareData = rawHash.startsWith(SHARE_PREFIX) ? rawHash.slice(SHARE_PREFIX.length) : null
+    const hash = shareData ? "" : decodeURIComponent(rawHash)
     if (hash) setViewRaw(hash)
+    if (shareData) openShareLink(shareData)
 
     const draftRaw = storage.get(draftKey)
     let draft: DesignTokens | null = null
@@ -209,10 +243,14 @@ export function Editor() {
 
   // Follow links and back/forward that change the #view
   React.useEffect(() => {
-    const onHash = () => setView(decodeURIComponent(window.location.hash.slice(1)) || "overview")
+    const onHash = () => {
+      const h = window.location.hash.slice(1)
+      if (h.startsWith(SHARE_PREFIX)) openShareLink(h.slice(SHARE_PREFIX.length))
+      else setView(decodeURIComponent(h) || "overview")
+    }
     window.addEventListener("hashchange", onHash)
     return () => window.removeEventListener("hashchange", onHash)
-  }, [setView])
+  }, [setView, openShareLink])
 
   /* ---------- persist draft ---------- */
   React.useEffect(() => {
@@ -234,14 +272,16 @@ export function Editor() {
     const onMessage = (e: MessageEvent<CanvasToEditor>) => {
       if (e.origin !== window.location.origin || !e.data || typeof e.data !== "object") return
       const msg = e.data
-      if (msg.type === "ds:ready") setCanvasReady(true)
+      if (msg.type === "ds:ready") setCanvasReady((n) => n + 1)
       else if (msg.type === "ds:navigate") setView(msg.view)
       else if (msg.type === "ds:layers") setLayers(msg.layers)
       else if (msg.type === "ds:selected") setSelection({ slot: msg.slot, variant: msg.variant, size: undefined })
     }
     window.addEventListener("message", onMessage)
+    // The canvas may have said it was ready before this listener existed: ask again
+    postToCanvas({ type: "ds:ping" })
     return () => window.removeEventListener("message", onMessage)
-  }, [setView])
+  }, [setView, postToCanvas])
 
   const assetUrls = React.useMemo(() => Object.fromEntries(Object.entries(assets).map(([p, a]) => [p, a.dataUrl])), [assets])
 
@@ -272,14 +312,7 @@ export function Editor() {
 
   /* ---------- editing ---------- */
   const locks = tokens.locks
-  const isLocked = React.useCallback(
-    (path: string) =>
-      (locks ?? []).some((l) => {
-        const roots = [l, ...(LOCK_ALIASES[l] ?? [])]
-        return roots.some((r) => path === r || path.startsWith(`${r}.`))
-      }),
-    [locks]
-  )
+  const isLocked = React.useCallback((path: string) => isPathLocked(locks, path), [locks])
 
   const update = React.useCallback(
     (path: string, value: unknown, key?: string) => {
@@ -333,6 +366,34 @@ export function Editor() {
     },
     [tokens, history, isLocked]
   )
+
+  /* ---------- agent ---------- */
+  // The agent may make several changes in one reply, so it reads the latest tokens synchronously
+  const tokensRef = React.useRef(tokens)
+  React.useEffect(() => {
+    tokensRef.current = tokens
+  }, [tokens])
+  const { set: setHistory } = history
+  const agentContext = React.useMemo<AgentContext>(
+    () => ({
+      getTokens: () => tokensRef.current,
+      setTokens: (next) => {
+        tokensRef.current = next
+        touched.current = true
+        setHistory(next)
+      },
+      navigate: (v) => setView(v),
+      components: canvas.demos.map((d) => ({ id: d.id, name: d.name, custom: canvas.customIds.includes(d.id) })),
+      blocks: canvas.blocks.map((b) => ({ id: b.id, name: b.name })),
+      foundations: FOUNDATIONS.map((f) => ({ id: f.id, name: f.name })),
+    }),
+    [setHistory, setView]
+  )
+
+  /* ---------- comments ---------- */
+  const comments = useComments(repo, token)
+  const openComments = comments.threads.filter((t) => t.open)
+  const pageComments = openComments.filter((t) => t.anchor.view === view).length
 
   /* ---------- keyboard ---------- */
   React.useEffect(() => {
@@ -420,12 +481,17 @@ export function Editor() {
   } else if (view === "lint") {
     inspectorTitle = "Lint rules"
     inspector = <LintPanel {...inspectorProps} />
+  } else if (view.startsWith("block:") && canvas.blocks.some((b) => `block:${b.id}` === view)) {
+    inspectorTitle = "Block"
+    inspector = <BlockPanel block={canvas.blocks.find((b) => `block:${b.id}` === view)!} />
   } else {
     inspector = <SystemPanel {...inspectorProps} onNavigate={setView} />
   }
 
   const q = search.trim().toLowerCase()
-  const demos = canvas.demos.filter((d) => !q || d.name.toLowerCase().includes(q))
+  const demos = canvas.demos.filter((d) => !canvas.customIds.includes(d.id) && (!q || d.name.toLowerCase().includes(q)))
+  const customDemos = canvas.demos.filter((d) => canvas.customIds.includes(d.id) && (!q || d.name.toLowerCase().includes(q)))
+  const blocks = canvas.blocks.filter((b) => !q || b.name.toLowerCase().includes(q) || b.category.toLowerCase().includes(q))
   const foundations = FOUNDATIONS.filter((f) => !q || f.name.toLowerCase().includes(q))
   const overrideCount = (slotOrComponent: string) => (tokens.overrides ?? []).filter((o) => o.component === slotOrComponent).length
 
@@ -562,6 +628,9 @@ export function Editor() {
           >
             <Icons.reset />
           </ChromeButton>
+          <ChromeButton onClick={() => setShareOpen(true)} title="Share a link to this draft">
+            <Icons.share /> <span className="hidden sm:inline">Share</span>
+          </ChromeButton>
           <ChromeButton onClick={() => setExportOpen("css")}>
             <Icons.download /> <span className="hidden sm:inline">Export</span>
           </ChromeButton>
@@ -588,6 +657,25 @@ export function Editor() {
           </button>
           <button type="button" className="font-medium underline" onClick={() => setRestored(false)}>
             Keep
+          </button>
+        </div>
+      )}
+
+      {shared && (
+        <div className="flex items-center justify-center gap-3 border-b border-blue-200 bg-blue-50 px-4 py-1.5 text-[12px] text-blue-900">
+          You&apos;re looking at a shared draft. It isn&apos;t saved anywhere until you click Save.
+          <button
+            type="button"
+            className="font-medium underline"
+            onClick={() => {
+              history.set(cloneTokens(baseline))
+              setShared(false)
+            }}
+          >
+            Go back to the saved version
+          </button>
+          <button type="button" className="font-medium underline" onClick={() => setShared(false)}>
+            Keep it
           </button>
         </div>
       )}
@@ -662,6 +750,7 @@ export function Editor() {
                     <NavItem id="overview" active={view === "overview"} onSelect={setView} label="Overview" icon={Icons.home} />
                     <NavItem id="style" active={view === "style"} onSelect={setView} label="Style" icon={Icons.brush} />
                     <NavItem id="components" active={view === "components"} onSelect={setView} label="All components" icon={Icons.grid} />
+                    <NavItem id="blocks" active={view === "blocks"} onSelect={setView} label="Blocks" icon={Icons.layers} />
                     <NavItem id="lint" active={view === "lint"} onSelect={setView} label="Lint" icon={Icons.shield} />
                   </div>
                 )}
@@ -671,6 +760,53 @@ export function Editor() {
                     <div className="flex flex-col gap-0.5">
                       {foundations.map((f) => (
                         <NavItem key={f.id} id={`foundation:${f.id}`} active={view === `foundation:${f.id}`} onSelect={setView} label={f.name} icon={FOUNDATION_ICONS[f.id]} />
+                      ))}
+                    </div>
+                  </>
+                )}
+                {(customDemos.length > 0 || !q) && (
+                  <>
+                    <div className="mt-4 mb-1 flex items-center justify-between px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">
+                      Custom components
+                      <button
+                        type="button"
+                        onClick={() => setNewComponentOpen(true)}
+                        className="flex size-5 items-center justify-center rounded-[4px] text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+                        title="New custom component"
+                        aria-label="New custom component"
+                      >
+                        <Icons.plus width={12} height={12} />
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      {customDemos.map((d) => {
+                        const n = overrideCount(d.id)
+                        return (
+                          <NavItem
+                            key={d.id}
+                            id={`component:${d.id}`}
+                            active={false}
+                            onSelect={setView}
+                            label={d.name}
+                            icon={Icons.component}
+                            badge={n > 0 ? <span className="size-1.5 rounded-full bg-blue-500" title={`${n} change${n === 1 ? "" : "s"}`} /> : undefined}
+                          />
+                        )
+                      })}
+                      {customDemos.length === 0 && (
+                        <button type="button" onClick={() => setNewComponentOpen(true)} className="px-2 py-1 text-left text-[12px] text-zinc-500 hover:text-zinc-900">
+                          New component…
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+                {blocks.length > 0 && (
+                  <>
+                    <div className="mt-4 mb-1 px-2 text-[11px] font-semibold tracking-wide text-zinc-400 uppercase">Blocks</div>
+                    <div className="flex flex-col gap-0.5">
+                      {blocks.map((b) => (
+                        <NavItem key={b.id} id={`block:${b.id}`} active={view === `block:${b.id}`} onSelect={setView} label={b.name} icon={Icons.layers} />
                       ))}
                     </div>
                   </>
@@ -730,6 +866,7 @@ export function Editor() {
                 ref={iframeRef}
                 title="Design system canvas"
                 src={canvasSrc}
+                onLoad={() => postToCanvas({ type: "ds:ping" })}
                 className="border-0"
                 style={{ width: `${100 / zoom}%`, height: `${100 / zoom}%`, transform: `scale(${zoom})`, transformOrigin: "0 0" }}
               />
@@ -743,16 +880,69 @@ export function Editor() {
         </main>
 
         {/* Inspector */}
-        <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-zinc-200 bg-white" aria-label="Inspector">
-          <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-200 px-4 text-[12px] font-semibold text-zinc-900">
-            {inspectorTitle}
-            {pickedComponent && (
-              <button type="button" className="text-[11px] font-normal text-zinc-500 underline" onClick={() => setSelection(null)}>
-                Done
+        <aside className="flex w-80 shrink-0 flex-col border-l border-zinc-200 bg-white" aria-label="Inspector">
+          <div className="flex h-10 shrink-0 items-center gap-1 border-b border-zinc-200 px-2" role="tablist" aria-label="Panel">
+            {(
+              [
+                { id: "inspect", label: "Inspect", icon: Icons.cursor },
+                { id: "agent", label: "Agent", icon: Icons.sparkle },
+                { id: "comments", label: "Comments", icon: Icons.chat },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={sideTab === tab.id}
+                onClick={() => setSideTab(tab.id)}
+                className={cx(
+                  "flex h-7 items-center gap-1.5 rounded-[6px] px-2 text-[12px] transition-colors",
+                  sideTab === tab.id ? "bg-zinc-100 font-medium text-zinc-900" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+                )}
+              >
+                <tab.icon width={13} height={13} />
+                {tab.label}
+                {tab.id === "comments" && openComments.length > 0 && (
+                  <span
+                    className={cx("rounded-full px-1.5 text-[10px]", pageComments ? "bg-blue-600 text-white" : "bg-zinc-200 text-zinc-600")}
+                    title={`${openComments.length} open, ${pageComments} on this page`}
+                  >
+                    {pageComments || openComments.length}
+                  </span>
+                )}
               </button>
-            )}
+            ))}
           </div>
-          {inspector}
+          <div className={cx("min-h-0 flex-1 flex-col overflow-y-auto", sideTab === "inspect" ? "flex" : "hidden")} role="tabpanel" aria-label="Inspect">
+            <div className="flex h-10 shrink-0 items-center justify-between border-b border-zinc-200 px-4 text-[12px] font-semibold text-zinc-900">
+              {inspectorTitle}
+              {pickedComponent && (
+                <button type="button" className="text-[11px] font-normal text-zinc-500 underline" onClick={() => setSelection(null)}>
+                  Done
+                </button>
+              )}
+            </div>
+            {inspector}
+          </div>
+          {/* The agent stays mounted so the chat survives switching tabs and pages */}
+          <div className={cx("min-h-0 flex-1 flex-col", sideTab === "agent" ? "flex" : "hidden")} role="tabpanel" aria-label="Agent">
+            <AgentPanel context={agentContext} view={view} viewName={pickedComponent ? panelName : viewLabel(view)} mode={mode} selection={selection} />
+          </div>
+          {sideTab === "comments" && (
+            <div className="flex min-h-0 flex-1 flex-col" role="tabpanel" aria-label="Comments">
+              <CommentsPanel
+                api={comments}
+                repo={repo}
+                token={token}
+                view={view}
+                mode={mode}
+                selection={selection}
+                labelFor={viewLabel}
+                onNavigate={setView}
+                onNeedToken={() => setSaveOpen(true)}
+              />
+            </div>
+          )}
         </aside>
       </div>
 
@@ -802,6 +992,34 @@ export function Editor() {
         }}
       />
 
+      <ShareDialog open={shareOpen} onClose={() => setShareOpen(false)} tokens={tokens} view={view} changeCount={changeCount} />
+
+      <NewComponentDialog
+        open={newComponentOpen}
+        onClose={() => setNewComponentOpen(false)}
+        repo={repo}
+        token={token}
+        customIds={canvas.customIds}
+        takenIds={[...canvas.demos.map((d) => d.id), ...Object.keys(COMPONENT_CLASSES)]}
+        onNeedToken={() => {
+          setNewComponentOpen(false)
+          setSaveOpen(true)
+        }}
+        onCreated={(url, id) => {
+          setNewComponentOpen(false)
+          setToast({
+            message: (
+              <>
+                Created {id}. It appears here once the site rebuilds (about 2 minutes), then reload.{" "}
+                <a href={url} target="_blank" rel="noopener" className="underline">
+                  View commit
+                </a>
+              </>
+            ),
+          })
+        }}
+      />
+
       {toast && <Toast message={toast.message} tone={toast.tone} onClose={() => setToast(null)} />}
     </div>
   )
@@ -818,6 +1036,7 @@ function newTokenUrl(repo: RepoConfig) {
     target_name: repo.owner,
     expires_in: "365",
     contents: "write",
+    issues: "write",
   })
   return `https://github.com/settings/personal-access-tokens/new?${p.toString()}`
 }
@@ -930,7 +1149,8 @@ function SaveDialog({
               Under <em>Repository access</em>, choose <em>Only select repositories</em> and pick <strong>{repo.repo}</strong>.
             </li>
             <li>
-              Under <em>Permissions</em>, set <strong>Contents</strong> to <em>Read and write</em>.
+              Under <em>Permissions</em>, set <strong>Contents</strong> to <em>Read and write</em> (and <strong>Issues</strong> to{" "}
+              <em>Read and write</em> if you want to post comments).
             </li>
             <li>Generate the token, copy it, and paste it here.</li>
           </ol>

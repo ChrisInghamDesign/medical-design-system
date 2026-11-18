@@ -8,6 +8,10 @@
 
 export type Mode = "light" | "dark"
 
+/** Icon libraries the components can draw with (see lib/ds/icons.tsx) */
+export const ICON_LIBRARY_IDS = ["hugeicons", "lucide", "tabler", "phosphor"] as const
+export type IconLibraryId = (typeof ICON_LIBRARY_IDS)[number]
+
 /** Every colour role the system defines. Adapters map these onto library slots. */
 export const COLOR_TOKENS = [
   "background",
@@ -166,7 +170,7 @@ export interface DesignTokens {
     follow: string[]
     focus: { style: "default" | "ring" | "outline"; width: number; offset: number; strength: number }
   }
-  icons?: { library: "hugeicons"; strokeWidth: number }
+  icons?: { library: IconLibraryId; strokeWidth: number }
   brand?: BrandTokens
   menu?: { color: "default" | "inverted"; accent: "subtle" | "bold" }
   /** Per-component style changes */

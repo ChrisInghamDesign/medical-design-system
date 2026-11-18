@@ -140,6 +140,10 @@ export const Icons = {
   back: svg(<path d="m15 18-6-6 6-6" />),
   trash: svg(<path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-13M9 7V4h6v3" />),
   play: svg(<path d="M7 4v16l13-8L7 4Z" />),
+  plus: svg(<path d="M12 5v14M5 12h14" />),
+  share: svg(<><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" /></>),
+  chat: svg(<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />),
+  sparkle: svg(<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6" />),
 }
 
 export function ChromeButton({

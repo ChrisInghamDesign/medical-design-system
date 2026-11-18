@@ -12,6 +12,8 @@ import { dirname, join } from "node:path"
 import { ADAPTERS } from "../lib/ds/adapters"
 import { importShadcnCss, patchComponentSource, patchGlobalsCss } from "../lib/ds/adapters/shadcn"
 import { parseComponentClasses, type ComponentClasses } from "../lib/ds/component-classes"
+import { CUSTOM_DIR, CUSTOM_INDEX, customRegistrySource } from "../lib/ds/custom-components"
+import { iconNamesFromSource, patchIconImports } from "../lib/ds/icon-patch"
 import { COLOR_TOKENS, SHADOW_LEVELS, normalizeTokens, type DesignTokens } from "../lib/ds/types"
 
 const TOKENS = "design-system/tokens.json"
@@ -19,6 +21,17 @@ const GLOBALS = "app/globals.css"
 const UI_DIR = "components/ui"
 const CLASSES = "design-system/component-classes.json"
 const BRAND = "components/brand.tsx"
+const ICONS = "lib/ds/icons.tsx"
+const BLOCKS_DIR = "components/blocks"
+const BLOCKS_SOURCE = "design-system/blocks-source.json"
+
+/** .tsx files in a folder (sorted), or none if it doesn't exist */
+function tsxFiles(dir: string, skip: string[] = []) {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir)
+    .filter((f) => f.endsWith(".tsx") && !skip.includes(f))
+    .sort()
+}
 
 /** components/brand.tsx: <Logo /> and <Mark /> from the Brand page */
 function brandSource(input: DesignTokens): string {
@@ -86,15 +99,37 @@ function build(tokens: DesignTokens) {
   write(GLOBALS, patchGlobalsCss(readFileSync(GLOBALS, "utf8"), tokens))
   write(BRAND, brandSource(tokens))
 
+  // Icons follow tokens.icons.library: point HugeIcons imports at lib/ds/icons
+  const iconNames = iconNamesFromSource(readFileSync(ICONS, "utf8"))
+  const missingIcons = new Map<string, string[]>()
+
   const classes: Record<string, ComponentClasses> = {}
-  for (const file of readdirSync(UI_DIR).filter((f) => f.endsWith(".tsx")).sort()) {
-    const path = join(UI_DIR, file)
-    const src = readFileSync(path, "utf8")
-    const patched = patchComponentSource(src)
+  const parse = (dir: string, file: string) => {
+    const path = join(dir, file)
+    const icons = patchIconImports(readFileSync(path, "utf8"), iconNames)
+    for (const name of icons.missing) missingIcons.set(name, [...(missingIcons.get(name) ?? []), path])
+    const patched = patchComponentSource(icons.src)
     write(path, patched)
     classes[file.replace(/\.tsx$/, "")] = parseComponentClasses(patched)
   }
+  for (const file of tsxFiles(UI_DIR)) parse(UI_DIR, file)
+  // Custom components: same treatment, plus a generated registry for the editor
+  const custom = tsxFiles(CUSTOM_DIR)
+  for (const file of custom) parse(CUSTOM_DIR, file)
+  write(CUSTOM_INDEX, customRegistrySource(custom.map((f) => f.replace(/\.tsx$/, ""))))
   write(CLASSES, JSON.stringify(classes, null, 1) + "\n")
+
+  if (missingIcons.size) {
+    for (const [name, files] of missingIcons) console.error(`Icon ${name} (used in ${files.join(", ")}) has no entry in ${ICONS}.`)
+    console.error(`Add a row for each to ICONS in ${ICONS} with the same icon from every library.`)
+    process.exit(1)
+  }
+
+  // Blocks: source of each block for the editor's Code view
+  const blocks = Object.fromEntries(
+    tsxFiles(BLOCKS_DIR).map((file) => [file.replace(/\.tsx$/, ""), readFileSync(join(BLOCKS_DIR, file), "utf8")])
+  )
+  write(BLOCKS_SOURCE, JSON.stringify(blocks, null, 1) + "\n")
 }
 
 const cmd = process.argv[2]

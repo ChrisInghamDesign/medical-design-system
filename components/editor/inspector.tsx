@@ -7,6 +7,18 @@ import { BASE_COLORS, applyBaseColor } from "@/lib/ds/base-colors"
 import { contrastLevel, contrastRatio, formatOklch, getAlpha, hexToRgb, parseColor, rgbToOklch, toHex, withAlpha, withHex } from "@/lib/ds/color"
 import { FONT_OPTIONS, type FontCategory } from "@/lib/ds/fonts"
 import {
+  Alert02Icon,
+  ArrowRight01Icon,
+  Calendar03Icon,
+  CheckmarkCircle02Icon,
+  HugeiconsIcon,
+  ICON_LIBRARIES,
+  Search01Icon,
+  Settings02Icon,
+  UserIcon,
+  type IconLibrary,
+} from "@/lib/ds/icons"
+import {
   COLOR_GROUPS,
   CONTRAST_PAIRS,
   CONTROL_COMPONENTS,
@@ -787,16 +799,44 @@ export function IconsPanel(props: InspectorProps) {
   const t = normalizeTokens(props.tokens)
   return (
     <>
-      <PanelSection title="Library">
-        <SelectInput value="hugeicons" disabled aria-label="Icon library">
-          <option value="hugeicons">HugeIcons</option>
-        </SelectInput>
+      <PanelSection title="Library" action={<LockButton path="icons" isLocked={props.isLocked} toggleLock={props.toggleLock} />}>
+        <div className="grid grid-cols-2 gap-1.5" role="radiogroup" aria-label="Icon library">
+          {ICON_LIBRARIES.map((lib) => {
+            const active = t.icons!.library === lib.id
+            return (
+              <button
+                key={lib.id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                disabled={props.isLocked("icons")}
+                onClick={() => props.update("icons.library", lib.id as IconLibrary)}
+                className={cx(
+                  "flex flex-col items-start gap-1.5 rounded-[6px] border px-2.5 py-2 text-left text-[12px] transition-colors disabled:opacity-50",
+                  active ? "border-blue-500 bg-blue-50/60 text-zinc-900" : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+                )}
+              >
+                <span className="flex gap-1.5 text-zinc-700 [&_svg]:size-3.5">
+                  {([UserIcon, Search01Icon, Settings02Icon, CheckmarkCircle02Icon, Alert02Icon] as const).map((icon) => (
+                    <HugeiconsIcon key={icon} icon={icon} library={lib.id} />
+                  ))}
+                </span>
+                <span className="font-medium">{lib.name}</span>
+              </button>
+            )
+          })}
+        </div>
         <p className="text-[11px] text-zinc-500">
-          The components are built with HugeIcons. Switching to another library means reinstalling them with that library (for example by
-          changing it in DS Manager and running the sync).
+          Every component icon switches to the matching icon from this library. Saving rewires the app too; new icons need a row in{" "}
+          <code>lib/ds/icons.tsx</code>.
         </p>
+        <div className="flex items-center gap-2 text-[11px] text-zinc-500 [&_svg]:size-3.5">
+          <HugeiconsIcon icon={Calendar03Icon} library={t.icons!.library} />
+          <HugeiconsIcon icon={ArrowRight01Icon} library={t.icons!.library} />
+          {ICON_LIBRARIES.find((l) => l.id === t.icons!.library)?.name}
+        </div>
       </PanelSection>
-      <PanelSection title="Icon style" action={<LockButton path="icons" isLocked={props.isLocked} toggleLock={props.toggleLock} />}>
+      <PanelSection title="Icon style">
         <FieldRow label={`Stroke · ${t.icons!.strokeWidth}`}>
           <RangeInput min={0.5} max={3} step={0.25} value={t.icons!.strokeWidth} disabled={props.isLocked("icons")} onChange={(e) => props.update("icons.strokeWidth", Number(e.target.value), "icons.stroke")} />
         </FieldRow>

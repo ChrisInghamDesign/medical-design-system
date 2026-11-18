@@ -27,7 +27,9 @@ import {
   Search01Icon,
   Settings02Icon,
   UserIcon,
-} from "@hugeicons/core-free-icons"
+  ICON_LIBRARIES,
+  type IconName,
+} from "@/lib/ds/icons"
 
 import classes from "@/design-system/component-classes.json"
 import { Alert, AlertTitle } from "@/components/ui/alert"
@@ -546,7 +548,7 @@ export function ControlsView({ tokens }: FoundationProps) {
 /* Icons                                                               */
 /* ------------------------------------------------------------------ */
 
-const ROLES = [
+const ROLES: { name: string; icons: IconName[] }[] = [
   { name: "Navigation", icons: [Home01Icon, Menu01Icon, Search01Icon, Settings02Icon, UserIcon] },
   { name: "Actions", icons: [Add01Icon, Edit02Icon, Delete02Icon, Copy01Icon, Download01Icon] },
   { name: "Status", icons: [CheckmarkCircle02Icon, Alert02Icon, InformationCircleIcon, Notification03Icon, Loading03Icon] },
@@ -559,7 +561,7 @@ export function IconsView({ tokens }: FoundationProps) {
   return (
     <div className="flex flex-col gap-10">
       <Section title="Icon library" description="The set every icon in the system comes from.">
-        <Tile label={`HugeIcons · @hugeicons/react + @hugeicons/core-free-icons · stroke ${t.icons!.strokeWidth}`}>
+        <Tile label={`${ICON_LIBRARIES.find((l) => l.id === t.icons!.library)?.name ?? "HugeIcons"} · stroke ${t.icons!.strokeWidth}`}>
           <div className="flex flex-wrap gap-3 [&_svg]:size-5">
             {ROLES.flatMap((r) => r.icons)
               .slice(0, 14)

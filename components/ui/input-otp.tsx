@@ -3,8 +3,7 @@
 import * as React from "react"
 import { cn } from "cn"
 import { OTPInput, OTPInputContext } from "input-otp"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { MinusSignIcon } from "@hugeicons/core-free-icons"
+import { HugeiconsIcon, MinusSignIcon } from "@/lib/ds/icons"
 
 // medical-copy · registry v1 · shadcn-ui/ui@4233ed1c
 

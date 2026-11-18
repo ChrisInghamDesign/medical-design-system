@@ -31,6 +31,17 @@ export function isLocked(t: DesignTokens, path: string) {
   return (t.locks ?? []).includes(path)
 }
 
+/** Lock areas that also cover related token paths */
+export const LOCK_ALIASES: Record<string, string[]> = {
+  typeScale: ["fontWeights", "tracking"],
+  radius: ["radiusSteps"],
+}
+
+/** Whether a path is covered by any lock (the path itself, a parent, or a whole-area alias) */
+export function isPathLocked(locks: string[] | undefined, path: string) {
+  return (locks ?? []).some((l) => [l, ...(LOCK_ALIASES[l] ?? [])].some((r) => path === r || path.startsWith(`${r}.`)))
+}
+
 interface State {
   past: DesignTokens[]
   present: DesignTokens
