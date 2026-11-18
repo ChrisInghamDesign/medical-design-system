@@ -1,0 +1,39 @@
+# One-off helper: writes the files in ds-bundle.json into the repo, then deletes the bundle.
+# Used to load the design system editor code from the browser. Safe to delete.
+name: Unpack bundle
+
+on:
+  push:
+    branches: [main]
+    paths: ["ds-bundle.json"]
+
+permissions:
+  contents: write
+
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write files from ds-bundle.json
+        run: |
+          python3 - <<'PY'
+          import json, os
+          data = json.load(open("ds-bundle.json"))
+          for path, content in data["files"].items():
+              assert not path.startswith(".github/") and ".." not in path, path
+              os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+              with open(path, "w") as f:
+                  f.write(content)
+              print("wrote", path)
+          os.remove("ds-bundle.json")
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Add design system editor"
+          git push
