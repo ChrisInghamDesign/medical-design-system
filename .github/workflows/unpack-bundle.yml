@@ -1,11 +1,12 @@
-# One-off helper: writes the files in ds-bundle.json into the repo, then deletes the bundle.
-# Used to load the design system editor code from the browser. Safe to delete.
+# One-off helper: writes the files in ds-bundle.b64 (gzipped JSON) into the repo,
+# installs dependencies, regenerates the theme, checks the build, then deletes the
+# bundle. Used to load the design system editor code from the browser. Safe to delete.
 name: Unpack bundle
 
 on:
   push:
     branches: [main]
-    paths: ["ds-bundle.json"]
+    paths: ["ds-bundle.b64"]
 
 permissions:
   contents: write
@@ -16,19 +17,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Write files from ds-bundle.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Write files from the bundle
         run: |
           python3 - <<'PY'
-          import json, os
-          data = json.load(open("ds-bundle.json"))
+          import base64, gzip, json, os
+          raw = gzip.decompress(base64.b64decode(open("ds-bundle.b64").read().strip()))
+          data = json.loads(raw)
           for path, content in data["files"].items():
               assert not path.startswith(".github/") and ".." not in path, path
               os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
               with open(path, "w") as f:
                   f.write(content)
               print("wrote", path)
-          os.remove("ds-bundle.json")
+          os.remove("ds-bundle.b64")
           PY
+
+      - name: Install dependencies (updates package-lock.json)
+        run: npm install --no-audit --no-fund
+
+      - name: Generate theme files from tokens
+        run: npm run ds:build
+
+      - name: Build check
+        run: npm run build
 
       - name: Commit
         run: |
