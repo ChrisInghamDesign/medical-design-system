@@ -33,6 +33,7 @@ import {
 
 import classes from "@/design-system/component-classes.json"
 import { Alert, AlertTitle } from "@/components/ui/alert"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -52,6 +53,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { Toggle } from "@/components/ui/toggle"
 import { contrastLevel, contrastRatio } from "@/lib/ds/color"
 import {
@@ -63,7 +65,6 @@ import {
   SHADOW_LEVELS,
   TEXT_STEPS,
   TRACKING,
-  WEIGHTS,
   normalizeTokens,
   type DesignTokens,
   type Mode,
@@ -80,23 +81,66 @@ export interface FoundationProps {
 
 export function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-4">
-      <div>
-        <h2 className="text-base font-semibold">{title}</h2>
-        {description && <p className="text-muted-foreground max-w-md text-sm">{description}</p>}
+    <section className="flex min-w-0 flex-col gap-4">
+      <div className="flex max-w-[353px] min-w-0 flex-col gap-1">
+        <h2 className="text-[13px] leading-[22px] font-medium text-[var(--chrome-canvas-fg)]">{title}</h2>
+        {description && <p className="text-[11px] leading-4 text-[var(--chrome-canvas-fg-muted)]">{description}</p>}
       </div>
       {children}
     </section>
   )
 }
 
-function Tile({ label, children, className }: { label: React.ReactNode; children: React.ReactNode; className?: string }) {
+/** The neutral "chrome" card every specimen sits in (same in any theme) */
+export const CHROME_CARD = "flex min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--chrome-line)] bg-[var(--chrome-card)]"
+export const CHROME_LABEL = "flex min-w-0 flex-col gap-0.5 border-t border-[var(--chrome-line)] p-3 font-mono text-[11px] leading-4 text-[var(--chrome-fg)]"
+
+function Tile({
+  label,
+  children,
+  className,
+  corner,
+  start,
+}: {
+  label: React.ReactNode
+  children: React.ReactNode
+  className?: string
+  /** Content flush in the bottom-right corner (radius samples) */
+  corner?: boolean
+  /** Content left-aligned and stacked (type samples) */
+  start?: boolean
+}) {
+  const body = corner
+    ? "flex min-h-20 min-w-0 flex-1 items-end justify-end"
+    : start
+      ? "flex min-h-20 min-w-0 flex-1 flex-col items-start justify-center gap-1 overflow-hidden p-4 text-[var(--chrome-fg)]"
+      : "flex min-h-30 min-w-0 flex-1 flex-wrap items-center justify-center gap-2 p-3"
   return (
-    <div className={`bg-card flex min-w-0 flex-col overflow-hidden rounded-2xl ${className ?? ""}`}>
-      <div className="flex min-h-24 flex-1 items-center justify-center p-5">{children}</div>
-      <div className="text-muted-foreground border-border/60 border-t px-4 py-2.5 font-mono text-[11px]">{label}</div>
+    <div className={`${CHROME_CARD} ${className ?? ""}`}>
+      <div className={body}>{children}</div>
+      <div className={CHROME_LABEL}>
+        <span className="truncate">{label}</span>
+      </div>
     </div>
   )
+}
+
+/** Light and dark values of the neutral canvas chrome */
+export function chromeVars(mode: Mode): React.CSSProperties {
+  const v =
+    mode === "dark"
+      ? { canvas: "lab(15.2% 0 0)", fg: "lab(93.04% 0 0)", muted: "lab(75.64% 0 0)", card: "lab(13.23% 0 0)", line: "lab(24.37% 0 0)", surface: "lab(19.84% 0 0)" }
+      : { canvas: "lab(93.74% 0 0)", fg: "lab(9.29% 0 0)", muted: "lab(38.52% 0 0)", card: "lab(100% 0 0)", line: "lab(91.18% 0 0)", surface: "lab(96.52% 0 0)" }
+  return {
+    "--chrome-canvas": v.canvas,
+    "--chrome-canvas-fg": v.fg,
+    "--chrome-canvas-fg-muted": v.muted,
+    "--chrome-fg": v.fg,
+    "--chrome-fg-muted": v.muted,
+    "--chrome-card": v.card,
+    "--chrome-line": v.line,
+    "--chrome-surface": v.surface,
+  } as React.CSSProperties
 }
 
 /* ------------------------------------------------------------------ */
@@ -124,11 +168,11 @@ const COLOR_SECTIONS: { title: string; description: string; tokens: ColorToken[]
 
 function Swatch({ name, value, wide }: { name: string; value: string; wide?: boolean }) {
   return (
-    <div className={`bg-card flex min-w-0 flex-col overflow-hidden rounded-2xl ${wide ? "sm:col-span-2" : ""}`}>
+    <div className={`${CHROME_CARD} ${wide ? "sm:col-span-2" : ""}`}>
       <div className="h-24" style={{ background: `var(--${name})` }} title={value} />
-      <div className="border-border/60 border-t px-4 py-2.5 font-mono text-[11px]">
-        <div className="truncate">{name}</div>
-        <div className="text-muted-foreground truncate">{value}</div>
+      <div className={CHROME_LABEL}>
+        <span className="truncate">{name}</span>
+        <span className="truncate text-[var(--chrome-fg-muted)]">{value}</span>
       </div>
     </div>
   )
@@ -141,17 +185,19 @@ export function ColorsView({ tokens, mode }: FoundationProps) {
   return (
     <div className="flex flex-col gap-10">
       <Section title="Foreground on background" description="Every text-on-surface pair in the system, checked against WCAG at body text size.">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[480px]:grid-cols-2 min-[800px]:grid-cols-4">
           {pairs.map(([surface, text]) => {
             const ratio = contrastRatio(colors[text], colors[surface], colors.background)
             const level = ratio ? contrastLevel(ratio) : "Fail"
             return (
-              <div key={`${surface}-${text}`} className="bg-card flex min-w-0 flex-col overflow-hidden rounded-2xl">
+              <div key={`${surface}-${text}`} className={CHROME_CARD}>
                 <div className="flex h-24 items-center justify-center text-sm font-medium" style={{ background: `var(--${surface})`, color: `var(--${text})` }}>
                   {ratio ? ratio.toFixed(2) : "?"} · {level}
                 </div>
-                <div className="border-border/60 truncate border-t px-4 py-2.5 font-mono text-[11px]">
-                  {surface} / {text}
+                <div className={CHROME_LABEL}>
+                  <span className="truncate">
+                    {surface} / {text}
+                  </span>
                 </div>
               </div>
             )
@@ -160,7 +206,7 @@ export function ColorsView({ tokens, mode }: FoundationProps) {
       </Section>
       {COLOR_SECTIONS.map((section) => (
         <Section key={section.title} title={section.title} description={section.description}>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[480px]:grid-cols-2 min-[800px]:grid-cols-4">
             {section.tokens.map((token) => (
               <Swatch key={token} name={token} value={colors[token]} wide={section.wide} />
             ))}
@@ -169,7 +215,7 @@ export function ColorsView({ tokens, mode }: FoundationProps) {
       ))}
       {(t.customColors ?? []).length > 0 && (
         <Section title="Custom colours" description="Your own colours, used by name as Tailwind classes (bg-success, text-warning).">
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[480px]:grid-cols-2 min-[800px]:grid-cols-4">
             {t.customColors!.map((c) => (
               <Swatch key={c.name} name={c.name} value={mode === "dark" ? c.dark : c.light} />
             ))}
@@ -227,67 +273,79 @@ const TRACKING_CLASS: Record<string, string> = {
   widest: "tracking-widest",
 }
 
-export function TypographyView({ tokens }: FoundationProps) {
+const SAMPLE = "Care that fits around your life"
+const PARAGRAPH = "Book a visit, message your care team and see your results in one place. Every screen is built from the same components and tokens, so a change here shows up everywhere."
+const GRID_3 = "grid min-w-0 grid-cols-1 items-stretch gap-3 min-[800px]:grid-cols-3"
+const GRID_4 = "grid min-w-0 grid-cols-1 items-stretch gap-3 min-[480px]:grid-cols-2 min-[800px]:grid-cols-4"
+const STACK = "flex min-w-0 flex-col gap-3"
+
+export function TypographyView({ tokens, mode }: FoundationProps) {
   const t = normalizeTokens(tokens)
+  const css = `:root {
+  --primary:            ${t.colors[mode].primary};
+  --primary-foreground: ${t.colors[mode]["primary-foreground"]};
+  --radius:             ${t.radius}rem;
+  --spacing:            ${t.spacing}rem;
+}`
   return (
-    <div className="flex flex-col gap-10">
-      <Section title="Font families" description="One face for body copy, one for headings and one for code.">
-        <div className="grid gap-4 md:grid-cols-3">
+    <div className="flex flex-col gap-8">
+      <Section title="Font family" description="The three faces the system loads: one for body copy, one for headings and one for code.">
+        <div className={GRID_3}>
           {(
             [
               ["Body", "sans", "font-sans"],
               ["Headings", "heading", "font-heading"],
-              ["Code", "mono", "font-mono"],
+              ["Mono", "mono", "font-mono"],
             ] as const
           ).map(([label, key, cls]) => (
-            <div key={key} className="bg-card flex min-w-0 flex-col gap-2 overflow-hidden rounded-2xl p-5">
-              <div className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{label}</div>
-              <div className={`${cls} text-4xl`}>Ag</div>
-              <div className={`${cls} text-lg`}>{t.fonts[key]}</div>
-              <div className={`${cls} text-muted-foreground text-sm break-all`}>ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789</div>
-            </div>
+            <Tile key={key} start label={label}>
+              <span className="font-mono text-[11px] text-[var(--chrome-fg-muted)]">{t.fonts[key]}</span>
+              <span className={`${cls} text-4xl`}>Ag</span>
+              <span className={`${cls} text-xs break-all`}>ABCDEFGHIJKLMNOPQRSTUVWXYZ</span>
+              <span className={`${cls} text-xs break-all`}>abcdefghijklmnopqrstuvwxyz</span>
+              <span className={`${cls} text-xs break-all`}>0123456789 !@#$%^&*()</span>
+            </Tile>
           ))}
         </div>
       </Section>
-      <Section title="Headings" description="Each heading level in the heading face.">
-        <div className="flex flex-col gap-3">
+      <Section title="Headings" description="Five steps of the heading scale, each set in the heading face at the size its class names.">
+        <div className={STACK}>
           {HEADINGS.map(([tag, cls]) => (
-            <Tile key={tag} label={`${tag} · ${cls}`} className="[&>div:first-child]:justify-start">
-              <div className={`font-heading ${cls} font-semibold tracking-tight`}>Care that fits your life</div>
+            <Tile key={tag} start label={`${tag} · ${cls}`}>
+              <span className={`font-heading ${cls} font-semibold tracking-tight`}>{SAMPLE}</span>
             </Tile>
           ))}
         </div>
       </Section>
-      <Section title="Type scale" description="Every text size, each with its own line height.">
-        <div className="bg-card divide-border/60 flex flex-col divide-y rounded-2xl">
+      <Section title="Type scale" description="Every text size the components use, each at its own line height.">
+        <div className={STACK}>
           {TEXT_STEPS.map((s) => (
-            <div key={s} className="flex items-baseline gap-6 overflow-hidden px-5 py-3">
-              <div className="text-muted-foreground w-36 shrink-0 font-mono text-xs">
-                text-{s} · {t.typeScale![s].size}/{t.typeScale![s].lineHeight}px
-              </div>
-              <div className={`${TEXT_CLASS[s]} truncate`}>Care that fits your life</div>
-            </div>
-          ))}
-        </div>
-      </Section>
-      <Section title="Weights">
-        <div className="grid grid-cols-3 gap-3 lg:grid-cols-5">
-          {WEIGHTS.map((w) => (
-            <Tile key={w} label={`font-${w} · ${t.fontWeights![w]}`}>
-              <span className={`${WEIGHT_CLASS[w]} text-3xl`}>Aa</span>
+            <Tile key={s} start label={`text-${s} · ${t.typeScale![s].size}px / ${t.typeScale![s].lineHeight}px`}>
+              <span className={`${TEXT_CLASS[s]} max-w-full truncate`}>{SAMPLE}</span>
             </Tile>
           ))}
         </div>
       </Section>
-      <Section title="Letter spacing">
-        <div className="bg-card divide-border/60 flex flex-col divide-y rounded-2xl">
+      <Section title="Body" description="The same paragraph at the four weights body copy uses, each with the number its name maps to.">
+        <div className={GRID_4}>
+          {(["normal", "medium", "semibold", "bold"] as const).map((w) => (
+            <Tile key={w} start label={`font-${w} · ${t.fontWeights![w]}`}>
+              <p className={`${WEIGHT_CLASS[w]} text-sm`}>{PARAGRAPH}</p>
+            </Tile>
+          ))}
+        </div>
+      </Section>
+      <Section title="Mono" description="The code face, on the kind of block the CSS export writes.">
+        <Tile start label="font-mono">
+          <pre className="font-mono text-xs leading-relaxed whitespace-pre">{css}</pre>
+        </Tile>
+      </Section>
+      <Section title="Tracking" description="The six letter-spacing steps, one line each so they can be compared.">
+        <div className={STACK}>
           {TRACKING.map((tr) => (
-            <div key={tr} className="flex items-baseline gap-6 px-5 py-3">
-              <div className="text-muted-foreground w-36 shrink-0 font-mono text-xs">
-                tracking-{tr} · {t.tracking![tr]}em
-              </div>
-              <div className={`${TRACKING_CLASS[tr]} text-lg`}>Design systems that last</div>
-            </div>
+            <Tile key={tr} start label={`tracking-${tr} · ${t.tracking![tr]}em`}>
+              <span className={`${TRACKING_CLASS[tr]} text-lg`}>{SAMPLE}</span>
+            </Tile>
           ))}
         </div>
       </Section>
@@ -299,16 +357,6 @@ export function TypographyView({ tokens }: FoundationProps) {
 /* Radius                                                              */
 /* ------------------------------------------------------------------ */
 
-const RADIUS_CLASS: Record<string, string> = {
-  sm: "rounded-sm",
-  md: "rounded-md",
-  lg: "rounded-lg",
-  xl: "rounded-xl",
-  "2xl": "rounded-2xl",
-  "3xl": "rounded-3xl",
-  "4xl": "rounded-4xl",
-}
-
 export function RadiusView({ tokens }: FoundationProps) {
   const t = normalizeTokens(tokens)
   const px = (step: (typeof RADIUS_STEPS)[number]) => {
@@ -316,51 +364,54 @@ export function RadiusView({ tokens }: FoundationProps) {
     return Math.round((fixed ?? t.radius * RADIUS_MULTIPLIER[step]) * 16 * 10) / 10
   }
   return (
-    <div className="flex flex-col gap-10">
-      <Section title="Base value" description="The one value the whole scale is calculated from.">
-        <Tile label={`--radius · ${Math.round(t.radius * 16 * 10) / 10}px`} className="max-w-sm">
-          <div className="bg-muted border-foreground/60 h-20 w-40 border-t-2 border-l-2" style={{ borderTopLeftRadius: "var(--radius)" }} />
-        </Tile>
+    <div className="flex flex-col gap-8">
+      <Section title="Base value" description="The one value the whole scale is calculated from, and the corner it rounds.">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[480px]:grid-cols-2">
+          <Tile corner label={`radius · ${Math.round(t.radius * 16 * 10) / 10}px`}>
+            <Corner radius="var(--radius)" />
+          </Tile>
+        </div>
       </Section>
-      <Section title="Radius scale" description="Every step, from the tightest corner to the roundest.">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <Section title="Radius scale" description="Every step calculated from the base value, from the tightest corner to the roundest.">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[480px]:grid-cols-2 min-[800px]:grid-cols-4">
           {RADIUS_STEPS.map((s) => (
-            <Tile key={s} label={`rounded-${s} · ${px(s)}px${t.radiusSteps?.[s] != null ? " (fixed)" : ""}`}>
-              <div className={`bg-primary/15 border-primary h-16 w-full border-2 ${RADIUS_CLASS[s]}`} />
+            <Tile corner key={s} label={`radius-${s} · ${px(s)}px${t.radiusSteps?.[s] != null ? " (fixed)" : ""}`}>
+              <Corner radius={`var(--radius-${s})`} />
             </Tile>
           ))}
         </div>
       </Section>
-      <Section title="In context" description="Components using the scale.">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Tile label="Button">
-            <div className="flex gap-2">
-              <Button>Save changes</Button>
-              <Button variant="outline">Cancel</Button>
-            </div>
+      <Section title="In context" description="Components the scale rounds, each label naming the step its style uses.">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[800px]:grid-cols-2">
+          <Tile label="Button · rounded-md">
+            <Button>Save changes</Button>
+            <Button variant="outline">Cancel</Button>
           </Tile>
-          <Tile label="Input">
+          <Tile label="Input · rounded-md">
             <Input placeholder="Search projects" className="max-w-xs" />
           </Tile>
-          <Tile label="Badge">
-            <div className="flex gap-2">
-              <Badge>New</Badge>
-              <Badge variant="secondary">Beta</Badge>
-              <Badge variant="outline">Archived</Badge>
-            </div>
+          <Tile label="Badge · rounded-md">
+            <Badge>New</Badge>
+            <Badge variant="secondary">Beta</Badge>
+            <Badge variant="outline">Archived</Badge>
           </Tile>
-          <Tile label="Checkbox">
+          <Tile label="Checkbox · rounded-sm">
             <Label className="gap-2">
               <Checkbox defaultChecked /> Notify me
             </Label>
           </Tile>
-          <Tile label="Card" className="md:col-span-2">
-            <Card className="w-full max-w-sm">
-              <CardHeader>
-                <CardTitle>Upcoming visit</CardTitle>
-                <CardDescription>Tuesday, 10:30 AM</CardDescription>
-              </CardHeader>
-            </Card>
+          <Tile label="Switch · rounded-full">
+            <Label className="gap-2">
+              <Switch defaultChecked /> Auto-reminders
+            </Label>
+          </Tile>
+          <Tile label="Avatar · rounded-full">
+            <Avatar>
+              <AvatarFallback>JP</AvatarFallback>
+            </Avatar>
+            <Avatar>
+              <AvatarFallback>AK</AvatarFallback>
+            </Avatar>
           </Tile>
         </div>
       </Section>
@@ -368,40 +419,75 @@ export function RadiusView({ tokens }: FoundationProps) {
   )
 }
 
+/** A corner sample: the top-left of a box rounded by the given radius */
+function Corner({ radius }: { radius: string }) {
+  return <div className="h-14 w-1/2 border-t border-l border-[var(--chrome-fg)] bg-[var(--chrome-surface)]" style={{ borderTopLeftRadius: radius }} />
+}
+
 /* ------------------------------------------------------------------ */
 /* Shadows                                                             */
 /* ------------------------------------------------------------------ */
 
 export function ShadowsView({ tokens, mode }: FoundationProps) {
+  const levels = ["none", ...SHADOW_LEVELS] as const
+  const surface = "bg-popover text-popover-foreground rounded-lg border"
   return (
-    <div className="flex flex-col gap-10">
-      <Section title="Elevation ramp" description="Every shadow step, from subtle to strong.">
-        <div className="grid grid-cols-2 gap-8 p-2 sm:grid-cols-3 lg:grid-cols-4">
-          {SHADOW_LEVELS.map((level) => (
-            <div key={level} className="flex flex-col gap-3">
-              <div className="bg-card h-24 rounded-xl" style={{ boxShadow: `var(--shadow-${level})` }} />
-              <div className="text-sm font-medium">shadow-{level}</div>
-              <div className="text-muted-foreground font-mono text-[11px] break-all">{tokens.shadows[mode][level]}</div>
-            </div>
+    <div className="flex flex-col gap-8">
+      <Section title="Elevation ramp" description="Every step, from flat to deepest.">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[800px]:grid-cols-2">
+          {levels.map((level) => (
+            <Tile
+              key={level}
+              className="[&>div:first-child]:min-h-36"
+              label={
+                <>
+                  <span>shadow-{level}</span>
+                  <span className="block truncate text-[var(--chrome-fg-muted)]">{level === "none" ? "no elevation" : tokens.shadows[mode][level]}</span>
+                </>
+              }
+            >
+              <div className="bg-card h-6 w-24 rounded-full" style={{ boxShadow: level === "none" ? "none" : `var(--shadow-${level})` }} />
+            </Tile>
           ))}
         </div>
       </Section>
-      <Section title="In context">
-        <div className="grid gap-6 p-2 md:grid-cols-2">
-          <Card className="shadow-sm">
-            <CardHeader>
-              <CardTitle>Card · shadow-sm</CardTitle>
-              <CardDescription>Resting surfaces</CardDescription>
-            </CardHeader>
-          </Card>
-          <div className="bg-popover text-popover-foreground rounded-lg border p-4 shadow-md">
-            <div className="text-sm font-medium">Popover · shadow-md</div>
-            <div className="text-muted-foreground text-sm">Floating menus and tooltips</div>
-          </div>
-          <div className="bg-popover text-popover-foreground rounded-xl border p-6 shadow-xl md:col-span-2">
-            <div className="font-heading text-lg font-semibold">Dialog · shadow-xl</div>
-            <div className="text-muted-foreground text-sm">The highest surfaces</div>
-          </div>
+      <Section title="In context" description="The surfaces the ramp lifts, each labelled with the step it uses.">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[800px]:grid-cols-2">
+          <Tile label="Toolbar button · shadow-xs">
+            <Button variant="outline">Export</Button>
+          </Tile>
+          <Tile label="Card · shadow-sm">
+            <Card className="w-full max-w-60 shadow-sm">
+              <CardHeader>
+                <CardTitle>Upcoming visit</CardTitle>
+                <CardDescription>Tuesday, 10:30 AM</CardDescription>
+              </CardHeader>
+            </Card>
+          </Tile>
+          <Tile label="Menu surface · shadow-md">
+            <div className={`${surface} flex w-44 flex-col p-1 text-sm shadow-md`}>
+              {["Profile", "Appointments", "Sign out"].map((x) => (
+                <span key={x} className="rounded-md px-2 py-1.5">
+                  {x}
+                </span>
+              ))}
+            </div>
+          </Tile>
+          <Tile label="Popover · shadow-md">
+            <div className={`${surface} w-56 p-3 shadow-md`}>
+              <div className="text-sm font-medium">Reminder</div>
+              <div className="text-muted-foreground text-xs">We&apos;ll text you a day before.</div>
+            </div>
+          </Tile>
+          <Tile label="Tooltip · shadow-md">
+            <span className="bg-foreground text-background rounded-md px-2 py-1 text-xs shadow-md">Copy link</span>
+          </Tile>
+          <Tile label="Dialog panel · shadow-xl">
+            <div className={`${surface} w-64 rounded-xl p-4 shadow-xl`}>
+              <div className="font-heading font-semibold">Cancel appointment?</div>
+              <div className="text-muted-foreground text-xs">You can book again at any time.</div>
+            </div>
+          </Tile>
         </div>
       </Section>
     </div>
@@ -415,45 +501,56 @@ export function ShadowsView({ tokens, mode }: FoundationProps) {
 const SPACING_STEPS = [1, 2, 3, 4, 5, 6, 8, 10, 12, 16, 24, 32]
 
 export function SpacingView({ tokens }: FoundationProps) {
+  const px = (n: number) => Math.round(tokens.spacing * n * 16 * 10) / 10
   return (
-    <div className="flex flex-col gap-10">
-      <Section title="Base unit" description="Every padding, gap and size in the system is a multiple of it.">
-        <Tile label={`--spacing · ${Math.round(tokens.spacing * 16 * 100) / 100}px`} className="max-w-xs">
-          <div className="bg-primary h-6" style={{ width: "var(--spacing)" }} />
-        </Tile>
+    <div className="flex flex-col gap-8">
+      <Section title="Base unit" description="The one length every padding, gap and size in the system is a multiple of.">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[480px]:grid-cols-2">
+          <Tile label={`spacing · ${px(1)}px`}>
+            <div className="bg-primary h-6" style={{ width: "var(--spacing)" }} />
+          </Tile>
+        </div>
       </Section>
-      <Section title="Scale">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <Section title="Scale" description="The multiples the components use, each bar exactly as wide as its step.">
+        <div className={GRID_4}>
           {SPACING_STEPS.map((n) => (
-            <Tile key={n} label={`×${n} · ${Math.round(tokens.spacing * n * 16 * 10) / 10}px`}>
+            <Tile key={n} label={`x${n} · ${px(n)}px`}>
               <div className="bg-primary/30 border-primary h-3 border-x" style={{ width: `calc(var(--spacing) * ${n})` }} />
             </Tile>
           ))}
         </div>
       </Section>
-      <Section title="In context" description="Real surfaces at the current density.">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>Book a visit</CardTitle>
-              <CardDescription>Padding and gaps follow the base unit</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-3">
-              <Input placeholder="Reason for visit" />
-              <Input placeholder="Preferred date" />
-            </CardContent>
-            <CardFooter>
-              <Button className="w-full">Continue</Button>
-            </CardFooter>
-          </Card>
-          <div className="flex flex-col gap-2">
-            {["Annual check-up", "Lab work", "Follow-up"].map((t) => (
-              <div key={t} className="bg-card flex items-center justify-between rounded-lg border px-4 py-3 text-sm">
-                {t}
-                <Badge variant="secondary">Open</Badge>
-              </div>
-            ))}
-          </div>
+      <Section title="In context" description="Two real surfaces at the current density, where the unit reads as padding.">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[800px]:grid-cols-2">
+          <Tile label="Form">
+            <Card className="w-full max-w-72">
+              <CardHeader>
+                <CardTitle>Book a visit</CardTitle>
+                <CardDescription>Padding and gaps follow the base unit</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <Input placeholder="Reason for visit" />
+                <Input placeholder="Preferred date" />
+              </CardContent>
+              <CardFooter>
+                <Button className="w-full">Continue</Button>
+              </CardFooter>
+            </Card>
+          </Tile>
+          <Tile label="Toolbar">
+            <div className="bg-card flex items-center gap-2 rounded-lg border p-2">
+              <Button size="sm" variant="ghost">
+                Day
+              </Button>
+              <Button size="sm" variant="secondary">
+                Week
+              </Button>
+              <Button size="sm" variant="ghost">
+                Month
+              </Button>
+              <Badge variant="secondary">12 visits</Badge>
+            </div>
+          </Tile>
         </div>
       </Section>
     </div>
@@ -472,12 +569,14 @@ const fruits = [
 export function ControlsView({ tokens }: FoundationProps) {
   const t = normalizeTokens(tokens)
   const heights = t.controls!.heights
+  const f = t.controls!.focus
+  const focusLabel = `${f.style === "outline" ? "outline" : "ring"} · ${f.width}px · ${f.strength}%`
   return (
     <div className="flex flex-col gap-10">
       <Section title="Heights" description="One height per size. Every control at that size uses it, so buttons and inputs next to each other always line up.">
         <div className="flex flex-col gap-3">
           {CONTROL_SIZES.map((size) => (
-            <div key={size} className="bg-card overflow-hidden rounded-2xl">
+            <div key={size} className="border border-[var(--chrome-line)] bg-[var(--chrome-card)] text-[var(--chrome-fg)] overflow-hidden rounded-xl">
               <div className="relative flex min-h-24 flex-wrap items-center justify-center gap-3 p-5">
                 <div
                   className="border-primary/40 pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 border-y border-dashed"
@@ -521,15 +620,17 @@ export function ControlsView({ tokens }: FoundationProps) {
                   </Toggle>
                 )}
               </div>
-              <div className="text-muted-foreground border-t px-4 py-2 font-mono text-[11px]">
-                {size} · {heights[size]}px
+              <div className={CHROME_LABEL}>
+                <span className="truncate">
+                  {size} · {heights[size]}px · h-{heights[size] / 4}
+                </span>
               </div>
             </div>
           ))}
         </div>
       </Section>
-      <Section title="In a row" description="A form row at the default size.">
-        <Tile label="default">
+      <Section title="In a row" description="A form row at the default size. Everything shares the default height, so the row lines up.">
+        <Tile label={`Input · Select · Button · ${heights.default}px`}>
           <div className="flex flex-wrap items-end gap-2">
             <Field className="w-40">
               <FieldLabel htmlFor="ctl-name">Name</FieldLabel>
@@ -551,14 +652,15 @@ export function ControlsView({ tokens }: FoundationProps) {
           </div>
         </Tile>
       </Section>
-      <Section title="Focus" description="Tab through these to see the focus style.">
-        <Tile label={`focus · ${t.controls!.focus.style}`}>
-          <div className="flex flex-wrap gap-3">
+      <Section title="Focus" description="What every control shows when you tab to it: the same ring or outline on all of them.">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[800px]:grid-cols-2">
+          <Tile label={`Button · ${focusLabel}`}>
             <Button>Focus me</Button>
-            <Input placeholder="Then me" className="w-40" />
-            <Checkbox />
-          </div>
-        </Tile>
+          </Tile>
+          <Tile label={`Input · ${focusLabel}`}>
+            <Input placeholder="Then me" className="w-44" />
+          </Tile>
+        </div>
       </Section>
     </div>
   )
@@ -567,6 +669,13 @@ export function ControlsView({ tokens }: FoundationProps) {
 /* ------------------------------------------------------------------ */
 /* Icons                                                               */
 /* ------------------------------------------------------------------ */
+
+const ICON_PACKAGES: Record<string, string> = {
+  hugeicons: "@hugeicons/react + @hugeicons/core-free-icons",
+  lucide: "lucide-react",
+  tabler: "@tabler/icons-react",
+  phosphor: "@phosphor-icons/react",
+}
 
 const ROLES: { name: string; icons: IconName[] }[] = [
   { name: "Navigation", icons: [Home01Icon, Menu01Icon, Search01Icon, Settings02Icon, UserIcon] },
@@ -580,8 +689,8 @@ export function IconsView({ tokens }: FoundationProps) {
   const t = normalizeTokens(tokens)
   return (
     <div className="flex flex-col gap-10">
-      <Section title="Icon library" description="The set every icon in the system comes from.">
-        <Tile label={`${ICON_LIBRARIES.find((l) => l.id === t.icons!.library)?.name ?? "HugeIcons"} · stroke ${t.icons!.strokeWidth}`}>
+      <Section title="Icon library" description="The set every icon in the system is drawn from, and the packages it installs.">
+        <Tile label={`${ICON_LIBRARIES.find((l) => l.id === t.icons!.library)?.name ?? "HugeIcons"} · ${ICON_PACKAGES[t.icons!.library] ?? ""} · stroke ${t.icons!.strokeWidth}`}>
           <div className="flex flex-wrap gap-3 [&_svg]:size-5">
             {ROLES.flatMap((r) => r.icons)
               .slice(0, 14)
@@ -591,8 +700,8 @@ export function IconsView({ tokens }: FoundationProps) {
           </div>
         </Tile>
       </Section>
-      <Section title="Roles" description="The jobs an app asks icons to do, five at a time.">
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+      <Section title="Roles" description="The jobs an app asks icons to do, five at a time, in the chosen library.">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[480px]:grid-cols-2 min-[800px]:grid-cols-3">
           {ROLES.map((r) => (
             <Tile key={r.name} label={r.name}>
               <div className="flex gap-3 [&_svg]:size-5">
@@ -604,16 +713,21 @@ export function IconsView({ tokens }: FoundationProps) {
           ))}
         </div>
       </Section>
-      <Section title="In context" description="Components drawing their own icons.">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Tile label="Button">
-            <div className="flex gap-2">
-              <Button>
-                <Icon icon={Add01Icon} data-icon="inline-start" /> New visit
-              </Button>
-              <Button variant="outline" size="icon" aria-label="Settings">
-                <Icon icon={Settings02Icon} />
-              </Button>
+      <Section title="In context" description="Real components drawing their own icons.">
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-3 min-[800px]:grid-cols-2">
+          <Tile label="Menu">
+            <div className="bg-popover text-popover-foreground flex w-48 flex-col rounded-lg border p-1 text-sm shadow-md [&_svg]:size-4">
+              {(
+                [
+                  [UserIcon, "Profile"],
+                  [Settings02Icon, "Settings"],
+                  [Notification03Icon, "Notifications"],
+                ] as const
+              ).map(([icon, label]) => (
+                <span key={label} className="flex items-center gap-2 rounded-md px-2 py-1.5">
+                  <Icon icon={icon} /> {label}
+                </span>
+              ))}
             </div>
           </Tile>
           <Tile label="Input">
@@ -698,7 +812,7 @@ export function BrandView(props: FoundationProps) {
       </Section>
       <Section title="In context" description="Where the brand actually shows up.">
         <div className="flex flex-col gap-4">
-          <div className="bg-card overflow-hidden rounded-2xl">
+          <div className="border border-[var(--chrome-line)] bg-[var(--chrome-card)] text-[var(--chrome-fg)] overflow-hidden rounded-xl">
             <div className="flex items-center gap-6 border-b px-5 py-3">
               <BrandLogo {...props} />
               <nav className="text-muted-foreground flex gap-4 text-sm">
@@ -713,7 +827,7 @@ export function BrandView(props: FoundationProps) {
             </div>
             <div className="text-muted-foreground px-5 py-2 font-mono text-[11px]">Header</div>
           </div>
-          <div className="bg-card flex justify-center rounded-2xl p-8">
+          <div className="border border-[var(--chrome-line)] bg-[var(--chrome-card)] text-[var(--chrome-fg)] flex justify-center rounded-xl p-8">
             <Card className="w-full max-w-sm">
               <CardHeader className="items-center text-center">
                 <div className="flex justify-center pb-2">

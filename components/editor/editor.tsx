@@ -774,8 +774,8 @@ export function Editor() {
       {
         colors: `The ${mode} palette, ${COLOR_TOKENS.length + (nt.customColors?.length ?? 0)} colours`,
         typography: `${nt.fonts.sans} · ${nt.fonts.heading} · ${nt.fonts.mono}`,
-        radius: `Base ${nt.radius}rem`,
-        shadows: `The ${mode} elevation ramp`,
+        radius: `--radius: ${nt.radius}rem`,
+        shadows: `shadow-sm: ${nt.shadows[mode].sm}`,
         spacing: `Base unit ${nt.spacing}rem`,
         controls: `Heights ${h.xs} · ${h.sm} · ${h.default} · ${h.lg}`,
         icons: `${ICON_LIBRARIES.find((l) => l.id === nt.icons!.library)?.name ?? nt.icons!.library} · stroke ${nt.icons!.strokeWidth}`,

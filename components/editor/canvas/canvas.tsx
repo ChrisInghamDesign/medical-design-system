@@ -13,7 +13,7 @@ import { normalizeTokens, type DesignTokens, type Mode, type OverrideState } fro
 
 import { BLOCK_CATEGORIES } from "@/components/blocks"
 
-import { MenuPreview, Section } from "./foundations"
+import { CHROME_CARD, chromeVars, MenuPreview, Section } from "./foundations"
 import { CANVASES, FOUNDATIONS, renderFoundation } from "./registry"
 
 const canvas = CANVASES[ACTIVE_ADAPTER.id]
@@ -373,7 +373,7 @@ export function Canvas() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") post({ type: "ds:navigate", view: `component:${demo.id}` })
                 }}
-                className="bg-card hover:ring-primary/40 flex min-w-0 cursor-pointer flex-col gap-4 overflow-hidden rounded-2xl p-5 text-left transition hover:ring-2"
+                className="flex min-w-0 cursor-pointer flex-col gap-4 overflow-hidden rounded-xl border border-[var(--chrome-line)] bg-[var(--chrome-card)] p-5 text-left transition hover:border-[var(--chrome-fg-muted)]"
               >
                 <div>
                   <div className="flex items-center gap-2 font-medium">
@@ -407,7 +407,7 @@ export function Canvas() {
             if (!list.length) return null
             return (
               <section key={category} className="flex flex-col gap-6">
-                <h2 className="font-heading text-xl font-semibold tracking-tight">{category}</h2>
+                <h2 className="text-[13px] leading-[22px] font-medium text-[var(--chrome-canvas-fg)]">{category}</h2>
                 {list.map((block) => (
                   <div
                     key={block.id}
@@ -417,9 +417,9 @@ export function Canvas() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") post({ type: "ds:navigate", view: `block:${block.id}` })
                     }}
-                    className="bg-card hover:ring-primary/40 flex cursor-pointer flex-col overflow-hidden rounded-2xl transition hover:ring-2"
+                    className={`${CHROME_CARD} cursor-pointer transition hover:border-[var(--chrome-fg-muted)]`}
                   >
-                    <div className="bg-card flex items-baseline justify-between gap-4 border-b px-5 py-3">
+                    <div className="flex items-baseline justify-between gap-4 border-b border-[var(--chrome-line)] px-5 py-3 text-[var(--chrome-fg)]">
                       <span className="font-medium">{block.name}</span>
                       <span className="text-muted-foreground truncate text-sm">{block.description}</span>
                     </div>
@@ -463,7 +463,7 @@ export function Canvas() {
                   <tr key={r}>
                     <th className="text-muted-foreground pr-3 text-right font-mono text-xs font-normal">{r}</th>
                     {colValues.map((c) => (
-                      <td key={c} className="bg-card rounded-xl p-4 text-center align-middle">
+                      <td key={c} className="rounded-xl border border-[var(--chrome-line)] bg-[var(--chrome-card)] p-4 text-center align-middle">
                         <div className="flex items-center justify-center">{render({ [rows.prop]: r, ...(cols ? { [cols.prop]: c } : {}) })}</div>
                       </td>
                     ))}
@@ -480,8 +480,8 @@ export function Canvas() {
           <div className="flex flex-col gap-10">
             {demo.examples.map((ex) => (
               <section key={ex.name} className="flex flex-col gap-3">
-                <h2 className="text-muted-foreground text-sm font-medium">{ex.name}</h2>
-                <div className="bg-card flex min-h-40 items-center justify-center rounded-2xl p-8 md:p-10">
+                <h2 className="text-[13px] leading-[22px] font-medium text-[var(--chrome-canvas-fg)]">{ex.name}</h2>
+                <div className="flex min-h-40 items-center justify-center rounded-xl border border-[var(--chrome-line)] bg-[var(--chrome-card)] p-8 md:p-10">
                   <DemoBoundary resetKey={`${view}:${ex.name}`}>{ex.render()}</DemoBoundary>
                 </div>
               </section>
@@ -493,7 +493,7 @@ export function Canvas() {
   }
 
   return (
-    <div className="bg-muted min-h-screen">
+    <div className="min-h-screen bg-[var(--chrome-canvas)]" style={chromeVars(mode)}>
       <DemoBoundary resetKey={`${view}:${display}`}>{body}</DemoBoundary>
       {!interact && <Highlights target={target?.auto ? null : target} hover={hover} />}
       {interact && target && !target.auto && <Highlights target={target} hover={null} />}
@@ -504,12 +504,12 @@ export function Canvas() {
 /** A canvas page. The page name lives in the editor's toolbar; `header` adds a short intro (All components, Blocks). */
 function Page({ title, description, header, children }: { title: string; description?: string; header?: boolean; children?: React.ReactNode }) {
   return (
-    <div className="p-6 md:p-10">
-      <div className="mx-auto flex max-w-5xl flex-col gap-8">
+    <div className="p-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
         {header && (
-          <div>
-            <h1 className="text-base font-semibold">{title}</h1>
-            {description && <p className="text-muted-foreground max-w-md text-sm">{description}</p>}
+          <div className="flex max-w-[353px] flex-col gap-1">
+            <h1 className="text-[13px] leading-[22px] font-medium text-[var(--chrome-canvas-fg)]">{title}</h1>
+            {description && <p className="text-[11px] leading-4 text-[var(--chrome-canvas-fg-muted)]">{description}</p>}
           </div>
         )}
         {children}
