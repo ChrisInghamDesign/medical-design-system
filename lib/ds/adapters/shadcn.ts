@@ -227,7 +227,8 @@ export function overrideSelector(o: Pick<ComponentOverride, "slot" | "variant" |
   if (o.size) base += `[data-size="${attr(o.size)}"]`
   if (!o.state) return base
   const sels = STATE_SUFFIX[o.state].map((s) => base + s)
-  if (preview) sels.push(`.ds-preview-${o.state} ${base}`)
+  // The preview follows the same exceptions as the real state (hover skips invalid/disabled)
+  if (preview) sels.push(`.ds-preview-${o.state} ${base}${o.state === "hover" ? ':not([aria-invalid="true"], :disabled, [data-disabled])' : ""}`)
   return sels.join(", ")
 }
 
