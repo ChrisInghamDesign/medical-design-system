@@ -174,7 +174,7 @@ class DemoBoundary extends React.Component<{ children: React.ReactNode; resetKey
 /* ------------------------------------------------------------------ */
 
 export function Canvas() {
-  const [tokens, setTokens] = React.useState<DesignTokens>(() => normalizeTokens(initialTokens as DesignTokens))
+  const [tokens, setTokens] = React.useState<DesignTokens>(() => normalizeTokens(initialTokens as unknown as DesignTokens))
   const [mode, setMode] = React.useState<Mode>("light")
   const [assets, setAssets] = React.useState<Record<string, string>>({})
   const [view, setView] = React.useState<string>("overview")

@@ -211,7 +211,8 @@ function menuCss(t: DesignTokens): string {
 /* ------------------------------------------------------------------ */
 
 const STATE_SUFFIX: Record<NonNullable<ComponentOverride["state"]>, string[]> = {
-  hover: [":hover"],
+  // Hover never overrides an invalid or disabled control's own look
+  hover: [':hover:not([aria-invalid="true"], :disabled, [data-disabled])'],
   focus: [":focus-visible"],
   active: [":active"],
   disabled: [":disabled", "[data-disabled]", '[aria-disabled="true"]'],

@@ -138,3 +138,20 @@
   --shadow-xl: 0px 4px 18px 0px oklch(0.1667 0.0215 238.811 / 10.2%);
   --shadow-2xl: 0px 6px 30px 0px oklch(0.1667 0.0215 238.811 / 15.3%);
 }
+
+/* Component overrides */
+[data-slot="checkbox"]:hover:not([aria-invalid="true"], :disabled, [data-disabled]) {
+  border-color: var(--ring);
+}
+[data-slot="radio-group-item"]:hover:not([aria-invalid="true"], :disabled, [data-disabled]) {
+  border-color: var(--ring);
+}
+[data-slot="input"]:hover:not([aria-invalid="true"], :disabled, [data-disabled]) {
+  border-color: var(--ring);
+}
+[data-slot="textarea"]:hover:not([aria-invalid="true"], :disabled, [data-disabled]) {
+  border-color: var(--ring);
+}
+[data-slot="switch"]:hover:not([aria-invalid="true"], :disabled, [data-disabled]) {
+  filter: brightness(0.95);
+}

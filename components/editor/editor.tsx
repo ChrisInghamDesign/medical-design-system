@@ -218,7 +218,7 @@ const selectable = (view: string) => view === "overview" || view === "style" || 
 type SideTab = "style" | "agent" | "utilities" | "lint" | "comments"
 
 export function Editor() {
-  const built = initialTokens as DesignTokens
+  const built = initialTokens as unknown as DesignTokens
   const history = useTokenHistory(built)
   const { tokens } = history
   const [baseline, setBaseline] = React.useState<DesignTokens>(built)
