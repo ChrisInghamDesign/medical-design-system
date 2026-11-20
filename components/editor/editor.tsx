@@ -952,6 +952,24 @@ export function Editor() {
               )}
             </NavGroup>
 
+            <NavGroup title="Default Components" open={defaultOpen} onToggle={() => setDefaultOpen((o) => !o)}>
+              {!q && <NavItem id="components" active={view === "components"} onSelect={setView} label="All components" icon={Icons.component} />}
+              {demos.map((d) => {
+                const n = overrideCount(d.id)
+                return (
+                  <NavItem
+                    key={d.id}
+                    id={`component:${d.id}`}
+                    active={componentId === d.id}
+                    onSelect={setView}
+                    label={d.name}
+                    icon={Icons.component}
+                    badge={n > 0 ? <span className="size-1.5 rounded-full bg-blue-500" title={`${n} change${n === 1 ? "" : "s"}`} /> : undefined}
+                  />
+                )
+              })}
+            </NavGroup>
+
             <NavGroup title="Blocks" open={blocksOpen || !!q} onToggle={() => setBlocksOpen((o) => !o)}>
               {!q && <NavItem id="blocks" active={view === "blocks"} onSelect={setView} label="All blocks" icon={Icons.layers} />}
               {BLOCK_CATEGORIES.map((category) => {
@@ -979,24 +997,6 @@ export function Editor() {
                       </div>
                     )}
                   </div>
-                )
-              })}
-            </NavGroup>
-
-            <NavGroup title="Default Components" open={defaultOpen} onToggle={() => setDefaultOpen((o) => !o)}>
-              {!q && <NavItem id="components" active={view === "components"} onSelect={setView} label="All components" icon={Icons.component} />}
-              {demos.map((d) => {
-                const n = overrideCount(d.id)
-                return (
-                  <NavItem
-                    key={d.id}
-                    id={`component:${d.id}`}
-                    active={componentId === d.id}
-                    onSelect={setView}
-                    label={d.name}
-                    icon={Icons.component}
-                    badge={n > 0 ? <span className="size-1.5 rounded-full bg-blue-500" title={`${n} change${n === 1 ? "" : "s"}`} /> : undefined}
-                  />
                 )
               })}
             </NavGroup>
