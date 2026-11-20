@@ -1,6 +1,6 @@
 import type * as React from "react"
 
-export const BLOCK_CATEGORIES = ["Marketing", "Application", "Forms"] as const
+export const BLOCK_CATEGORIES = ["Landing page", "Application", "E-commerce", "AI"] as const
 export type BlockCategory = (typeof BLOCK_CATEGORIES)[number]
 
 /**

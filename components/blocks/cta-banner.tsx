@@ -29,7 +29,7 @@ export function CtaBannerBlock() {
 export const block: Block = {
   id: "cta-banner",
   name: "Call-to-action banner",
-  category: "Marketing",
+  category: "Landing page",
   description: "Primary-coloured banner with a headline and a single call to action.",
   render: () => <CtaBannerBlock />,
 }

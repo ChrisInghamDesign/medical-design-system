@@ -103,7 +103,7 @@ export function AppointmentBookingBlock() {
 export const block: Block = {
   id: "appointment-booking",
   name: "Appointment booking",
-  category: "Forms",
+  category: "Application",
   description: "Booking form with visit type, date picker, time select and notes.",
   render: () => <AppointmentBookingBlock />,
 }

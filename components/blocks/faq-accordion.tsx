@@ -55,7 +55,7 @@ export function FaqAccordionBlock() {
 export const block: Block = {
   id: "faq-accordion",
   name: "FAQ",
-  category: "Marketing",
+  category: "Landing page",
   description: "Frequently asked questions in an accordion beside a short intro.",
   render: () => <FaqAccordionBlock />,
 }

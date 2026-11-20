@@ -54,7 +54,7 @@ export function FeatureGridBlock() {
 export const block: Block = {
   id: "feature-grid",
   name: "Feature grid",
-  category: "Marketing",
+  category: "Landing page",
   description: "Section heading with a responsive grid of six icon cards.",
   render: () => <FeatureGridBlock />,
 }

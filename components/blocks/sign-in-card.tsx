@@ -67,7 +67,7 @@ export function SignInCardBlock() {
 export const block: Block = {
   id: "sign-in-card",
   name: "Sign-in card",
-  category: "Forms",
+  category: "Application",
   description: "Patient sign-in card with email, password, remember-me and an alternative link.",
   render: () => <SignInCardBlock />,
 }

@@ -15,6 +15,8 @@ import { decodeShare, SHARE_PREFIX } from "@/lib/ds/share"
 import { cloneTokens, getPath, isPathLocked, sameTokens, setPath, storage, useTokenHistory } from "@/lib/ds/store"
 import { COLOR_TOKENS, normalizeTokens, type DesignTokens, type Mode, type OverrideState } from "@/lib/ds/types"
 
+import { BLOCK_CATEGORIES } from "@/components/blocks"
+
 import { AgentPanel } from "./agent-panel"
 import { CANVASES, FOUNDATIONS } from "./canvas/registry"
 import { ChromeButton, cx, FieldRow, Icons, Modal, Segmented, TextInput, Toast } from "./chrome"
@@ -247,6 +249,8 @@ export function Editor() {
   const [componentsFilter, setComponentsFilter] = React.useState<ComponentsFilter>({ tab: "all", q: "" })
   const [customOpen, setCustomOpen] = React.useState(true)
   const [defaultOpen, setDefaultOpen] = React.useState(true)
+  const [blocksOpen, setBlocksOpen] = React.useState(true)
+  const [openCategories, setOpenCategories] = React.useState<Record<string, boolean>>({})
   const [shared, setShared] = React.useState(false)
   const iframeRef = React.useRef<HTMLIFrameElement>(null)
   // The iframe loads once; later view changes are sent as messages
@@ -787,7 +791,6 @@ export function Editor() {
     { id: "overview", label: "Overview", icon: Icons.home },
     { id: "style", label: "Style", icon: Icons.brush },
     ...FOUNDATIONS.map((f) => ({ id: `foundation:${f.id}`, label: f.name, icon: FOUNDATION_ICONS[f.id] })),
-    { id: "blocks", label: "Blocks", icon: Icons.layers },
     { id: "lint", label: "Lint", icon: Icons.shield },
   ]
   const shownNav = navItems.filter((n) => !q || n.label.toLowerCase().includes(q))
@@ -946,6 +949,37 @@ export function Editor() {
                   </ChromeButton>
                 </div>
               )}
+            </NavGroup>
+
+            <NavGroup title="Blocks" open={blocksOpen || !!q} onToggle={() => setBlocksOpen((o) => !o)}>
+              {!q && <NavItem id="blocks" active={view === "blocks"} onSelect={setView} label="All blocks" icon={Icons.layers} />}
+              {BLOCK_CATEGORIES.map((category) => {
+                const list = canvas.blocks.filter((b) => b.category === category && (!q || b.name.toLowerCase().includes(q)))
+                if (!list.length) return null
+                const containsView = list.some((b) => view === `block:${b.id}`)
+                const open = openCategories[category] ?? (containsView || !!q)
+                return (
+                  <div key={category}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenCategories((c) => ({ ...c, [category]: !open }))}
+                      aria-expanded={open}
+                      className="flex h-7 w-full items-center gap-1.5 rounded-[6px] px-2 text-left text-[13px] text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+                    >
+                      <Icons.chevron width={12} height={12} className={cx("shrink-0 text-zinc-400 transition-transform", open && "rotate-90")} />
+                      <span className="flex-1 truncate">{category}</span>
+                      <span className="text-[10px] text-zinc-400">{list.length}</span>
+                    </button>
+                    {open && (
+                      <div className="ml-3 flex flex-col gap-0.5 border-l border-zinc-200 pl-1.5">
+                        {list.map((b) => (
+                          <NavItem key={b.id} id={`block:${b.id}`} active={view === `block:${b.id}`} onSelect={setView} label={b.name} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </NavGroup>
 
             <NavGroup title="Default Components" open={defaultOpen} onToggle={() => setDefaultOpen((o) => !o)}>

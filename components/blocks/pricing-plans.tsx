@@ -85,7 +85,7 @@ export function PricingPlansBlock() {
 export const block: Block = {
   id: "pricing-plans",
   name: "Pricing plans",
-  category: "Marketing",
+  category: "Landing page",
   description: "Three membership plans with a highlighted recommended option.",
   render: () => <PricingPlansBlock />,
 }

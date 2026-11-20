@@ -35,7 +35,7 @@ export function HeroCenteredBlock() {
 export const block: Block = {
   id: "hero-centered",
   name: "Hero, centered",
-  category: "Marketing",
+  category: "Landing page",
   description: "Centered headline with a badge, supporting copy and two calls to action.",
   render: () => <HeroCenteredBlock />,
 }
