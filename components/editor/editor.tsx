@@ -791,7 +791,6 @@ export function Editor() {
     { id: "overview", label: "Overview", icon: Icons.home },
     { id: "style", label: "Style", icon: Icons.brush },
     ...FOUNDATIONS.map((f) => ({ id: `foundation:${f.id}`, label: f.name, icon: FOUNDATION_ICONS[f.id] })),
-    { id: "blocks", label: "Blocks", icon: Icons.layers },
     { id: "lint", label: "Lint", icon: Icons.shield },
   ]
   const shownNav = navItems.filter((n) => !q || n.label.toLowerCase().includes(q))
